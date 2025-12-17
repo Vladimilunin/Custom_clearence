@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import PartDetailModal from '../components/PartDetailModal';
 
 interface Part {
     id: number;
@@ -9,16 +10,25 @@ interface Part {
     name: string;
     material: string;
     weight: number;
+    weight_unit: string;
     dimensions: string;
     description: string;
     section: string;
     image_path: string | null;
+    manufacturer: string;
+    condition: string;
+    component_type: string;
+    specs: any;
+    tnved_code: string | null;
+    tnved_description: string | null;
 }
 
 export default function PartsPage() {
     const [parts, setParts] = useState<Part[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [selectedPart, setSelectedPart] = useState<Part | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
         fetchParts();
@@ -38,22 +48,33 @@ export default function PartsPage() {
         }
     };
 
-    const handleUpdate = async (id: number, field: keyof Part, value: string | number) => {
-        // Optimistic update
-        setParts(parts.map(p => p.id === id ? { ...p, [field]: value } : p));
+    const handlePartClick = (part: Part) => {
+        setSelectedPart(part);
+        setIsModalOpen(true);
+    };
+
+    const handleSavePart = async (updatedPart: Partial<Part>) => {
+        if (!selectedPart) return;
 
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-            const response = await fetch(`${apiUrl}/api/v1/parts/${id}`, {
+            const response = await fetch(`${apiUrl}/api/v1/parts/${selectedPart.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [field]: value }),
+                body: JSON.stringify(updatedPart),
             });
+
             if (!response.ok) throw new Error('Failed to update part');
+
+            const savedPart = await response.json();
+
+            // Update local state
+            setParts(parts.map(p => p.id === savedPart.id ? savedPart : p));
+            setSelectedPart(savedPart); // Update modal with saved data
+
         } catch (error) {
             console.error('Error updating part:', error);
-            // Revert on error (could be improved)
-            fetchParts();
+            alert('Ошибка при сохранении детали');
         }
     };
 
@@ -94,68 +115,43 @@ export default function PartsPage() {
                                         <th className="px-6 py-3">Наименование</th>
                                         <th className="px-6 py-3">Фото</th>
                                         <th className="px-6 py-3">Материал</th>
-                                        <th className="px-6 py-3">Вес (кг)</th>
+                                        <th className="px-6 py-3">Вес</th>
                                         <th className="px-6 py-3">Размеры</th>
-                                        <th className="px-6 py-3">Описание</th>
+                                        <th className="px-6 py-3">Тип</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredParts.map((part) => (
-                                        <tr key={part.id} className="bg-white border-b hover:bg-gray-50">
+                                        <tr
+                                            key={part.id}
+                                            className="bg-white border-b hover:bg-blue-50 cursor-pointer transition-colors"
+                                            onClick={() => handlePartClick(part)}
+                                        >
                                             <td className="px-6 py-4 font-medium text-gray-900">{part.designation}</td>
-                                            <td className="px-6 py-4">
-                                                <input
-                                                    type="text"
-                                                    value={part.name || ''}
-                                                    onChange={(e) => handleUpdate(part.id, 'name', e.target.value)}
-                                                    className="bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none w-full"
-                                                />
-                                            </td>
+                                            <td className="px-6 py-4">{part.name}</td>
                                             <td className="px-6 py-4">
                                                 {part.image_path ? (
-                                                    <a href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${part.image_path}`} target="_blank" rel="noopener noreferrer">
-                                                        <img
-                                                            src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${part.image_path}`}
-                                                            alt={part.designation}
-                                                            className="h-10 w-10 object-cover rounded border border-gray-200"
-                                                        />
-                                                    </a>
+                                                    <img
+                                                        src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${part.image_path}`}
+                                                        alt={part.designation}
+                                                        className="h-10 w-10 object-cover rounded border border-gray-200"
+                                                        loading="lazy"
+                                                    />
                                                 ) : (
                                                     <span className="text-gray-400 text-xs">Нет</span>
                                                 )}
                                             </td>
+                                            <td className="px-6 py-4">{part.material}</td>
+                                            <td className="px-6 py-4">{part.weight} {part.weight_unit}</td>
+                                            <td className="px-6 py-4">{part.dimensions}</td>
                                             <td className="px-6 py-4">
-                                                <input
-                                                    type="text"
-                                                    value={part.material || ''}
-                                                    onChange={(e) => handleUpdate(part.id, 'material', e.target.value)}
-                                                    className="bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none w-full"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <input
-                                                    type="number"
-                                                    step="0.001"
-                                                    value={part.weight || 0}
-                                                    onChange={(e) => handleUpdate(part.id, 'weight', parseFloat(e.target.value))}
-                                                    className="bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none w-20"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <input
-                                                    type="text"
-                                                    value={part.dimensions || ''}
-                                                    onChange={(e) => handleUpdate(part.id, 'dimensions', e.target.value)}
-                                                    className="bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none w-full"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <input
-                                                    type="text"
-                                                    value={part.description || ''}
-                                                    onChange={(e) => handleUpdate(part.id, 'description', e.target.value)}
-                                                    className="bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none w-full"
-                                                />
+                                                {part.component_type === 'electronics' ? (
+                                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                                        Электроника
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-gray-500">-</span>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -165,6 +161,14 @@ export default function PartsPage() {
                     )}
                 </div>
             </div>
+
+            <PartDetailModal
+                part={selectedPart}
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onSave={handleSavePart}
+                isEditable={true}
+            />
         </main>
     );
 }
