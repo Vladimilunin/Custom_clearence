@@ -1,36 +1,32 @@
+"""
+Document generator for customs clearance documents.
+
+This module provides functions to generate:
+- Technical descriptions
+- Non-insurance letters  
+- Decision 130 notifications
+"""
 from docx import Document
 from docx.shared import Cm, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 import os
+from datetime import datetime
+
 from app.db.models import Part
 from app.services.parser import normalize_date
 from app.services.s3 import s3_service
-from datetime import datetime
+from app.services.document_builder import (
+    FontHelper,
+    TableHelper,
+    ImageHelper,
+    PageNumberHelper,
+    PartInfo,
+)
 
-# Helper to set font for a run
-def set_font(run, font_name='Times New Roman', font_size=12, bold=False, color=None):
-    run.font.name = font_name
-    run.font.size = Pt(font_size)
-    run.font.bold = bold
-    if color:
-        run.font.color.rgb = color
-
-def remove_table_borders(table):
-    """
-    Explicitly remove all borders from a table.
-    """
-    from docx.oxml.shared import OxmlElement
-    from docx.oxml.ns import qn
-    
-    tbl = table._tbl
-    tblPr = tbl.tblPr
-    tblBorders = OxmlElement('w:tblBorders')
-    for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
-        border = OxmlElement(f'w:{border_name}')
-        border.set(qn('w:val'), 'nil')
-        tblBorders.append(border)
-    tblPr.append(tblBorders)
+# Backwards compatibility aliases
+set_font = FontHelper.set_font
+remove_table_borders = TableHelper.remove_borders
 
 def create_header(document):
     section = document.sections[0]
