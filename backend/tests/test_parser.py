@@ -83,13 +83,24 @@ class TestNormalizeDate:
 class TestParseInvoiceIntegration:
     """Integration tests for parse_invoice (requires API keys)."""
 
-    @pytest.mark.skip(reason="Requires valid PDF file and API keys")
+    # @pytest.mark.skip(reason="Requires valid PDF file and API keys")
     def test_parse_valid_pdf(self):
-        """Test parsing a valid PDF invoice."""
+        """Test parsing a valid PDF invoice using real fixture."""
         from app.services.parser import parse_invoice
-        items, debug_info = parse_invoice("tests/fixtures/sample_invoice.pdf")
+        import os
+        
+        # Use absolute path or relative to project root
+        pdf_path = os.path.join(os.path.dirname(__file__), "fixtures", "PI PTJ20251023B1.pdf")
+        
+        if not os.path.exists(pdf_path):
+            pytest.skip(f"Fixture not found: {pdf_path}")
+            
+        items, debug_info = parse_invoice(pdf_path)
+        
         assert isinstance(items, list)
+        assert len(items) > 0
         assert "method_used" in debug_info
+        assert debug_info["error"] is None
 
     @pytest.mark.skip(reason="Requires valid PDF file")
     def test_parse_nonexistent_file(self):

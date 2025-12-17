@@ -1,9 +1,10 @@
 import logging
 import sys
 
+from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 
 from app.services.s3 import s3_service
 
@@ -75,7 +76,7 @@ if os.path.exists("/app/images"):
 else:
     # Fallback to local development path
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    IMAGES_DIR = os.path.join(BASE_DIR, "_фото (эскизы) изделий")
+    IMAGES_DIR = os.path.join(BASE_DIR, "_изображения")
 
 if os.path.exists(IMAGES_DIR):
     logger.info(f"Mounting images from {IMAGES_DIR}")

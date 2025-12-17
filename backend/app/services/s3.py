@@ -19,27 +19,11 @@ class S3Service:
 
     def upload_file(self, file_obj, object_name):
         try:
-            # Determine content type based on extension
-            content_type = 'application/octet-stream'
-            if object_name.endswith('.webp'):
-                content_type = 'image/webp'
-            elif object_name.endswith('.jpg') or object_name.endswith('.jpeg'):
-                content_type = 'image/jpeg'
-            elif object_name.endswith('.png'):
-                content_type = 'image/png'
-            elif object_name.endswith('.pdf'):
-                content_type = 'application/pdf'
-
             self.s3_client.upload_fileobj(
                 file_obj,
                 self.bucket_name,
                 object_name,
-                ExtraArgs={
-                    'ACL': 'public-read',
-                    'ContentType': content_type,
-                    # Cache for 1 year (immutable assets)
-                    'CacheControl': 'public, max-age=31536000, immutable'
-                }
+                ExtraArgs={'ACL': 'public-read'} # Optional: make public if needed
             )
             # Construct the URL
             # For R2, if you have a custom domain or just use the endpoint

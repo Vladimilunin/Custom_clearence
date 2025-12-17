@@ -56,6 +56,178 @@ def normalize_date(date_str: str) -> str:
     return date_str  # Return original if parsing fails
 
 
+def _render_pages(pdf_path: str) -> List[Image.Image]:
+    """Render all pages of a PDF to PIL images."""
+    import pypdfium2 as pdfium
+    
+    images = []
+    try:
+        print("Rendering PDF pages...")
+        pdf = pdfium.PdfDocument(pdf_path)
+        for i in range(len(pdf)):
+            print(f"Rendering page {i+1}...")
+            page = pdf.get_page(i)
+            bitmap = page.render(scale=2)
+            pil_image = bitmap.to_pil()
+            images.append(pil_image)
+        pdf.close()
+        print(f"Rendered {len(images)} pages.")
+        return images
+    except Exception as e:
+        print(f"Rendering failed: {e}")
+        raise e
+
+
+def _encode_image(image: Image.Image) -> str:
+    """Encode PIL image to base64."""
+    import base64
+    from io import BytesIO
+    
+    buffered = BytesIO()
+    image.save(buffered, format="JPEG")
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+
+PAGE_PROMPT = """Extract all line items from this invoice page. Return a valid JSON object with this structure:
+{
+  "items": [
+    {
+      "designation": "Part Number/Designation (Alphanumeric code, e.g. R1.003, 5550-0329c)", 
+      "description": "Description", 
+      "material": "Material", 
+      "name": "Part Name (Text description, e.g. Bushing, Plate, Втулка)", 
+      "quantity": 0, 
+      "unit_price": 0.0, 
+      "total_price": 0.0
+    }
+  ],
+  "invoice_number": "Invoice Number (if found on this page)",
+  "invoice_date": "Invoice Date (if found on this page)",
+  "contract_number": "Contract Number (if found on this page)",
+  "contract_date": "Contract Date (if found on this page)",
+  "supplier": "Supplier Name (if found on this page)"
+}
+If a field is not found, return null or empty string. Ensure the JSON is valid.
+IMPORTANT: 
+1. Do not confuse Designation (code) with Name (text). Designation usually contains numbers and dots/dashes. Name is usually a word.
+2. IGNORE rows that are NOT parts, such as: "Shipping cost", "Freight", "Tax", "VAT", "Total", "Subtotal", "Bank charges", "Insurance".
+3. IGNORE footer text like "Say total...", "Page x of y".
+"""
+
+
+def _process_page(
+    page_index: int, 
+    b64_img: str, 
+    models: List[str], 
+    api_keys: List[str]
+) -> Tuple[List[Dict], Dict, List[Dict]]:
+    """
+    Process a single page with Groq AI using model/key rotation.
+    Returns: (items, metadata, logs)
+    """
+    import requests
+    
+    items = []
+    metadata = {}
+    logs = []
+    success = False
+
+    for model_slug in models:
+        if success:
+            break
+            
+        print(f"--- Page {page_index+1}: Trying model {model_slug} ---")
+        
+        for key_idx, api_key in enumerate(api_keys):
+            if success:
+                break
+                
+            print(f"--- Page {page_index+1}: Trying Key {key_idx+1}/{len(api_keys)} ({api_key[-4:]}) ---")
+            
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "model": model_slug,
+                "messages": [{
+                    "role": "user", 
+                    "content": [
+                        {"type": "text", "text": PAGE_PROMPT},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}}
+                    ]
+                }],
+                "temperature": 0.1
+            }
+            
+            try:
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    data=json.dumps(payload),
+                    timeout=60
+                )
+                
+                if response.status_code == 200:
+                    resp_json = response.json()
+                    content = resp_json['choices'][0]['message']['content']
+                    
+                    # Basic cleanup
+                    if "```json" in content:
+                        content = content.split("```json")[1].split("```")[0]
+                    elif "```" in content:
+                        content = content.split("```")[1].split("```")[0]
+                    
+                    print(f"DEBUG: Raw JSON from Groq (Page {page_index+1}): {content[:100]}...")
+                    data = json.loads(content)
+                    
+                    if isinstance(data.get("items"), list):
+                        items = data["items"]
+                    
+                    # Metadata only if valid
+                    metadata = {
+                        "invoice_number": data.get("invoice_number"),
+                        "invoice_date": normalize_date(data.get("invoice_date")),
+                        "contract_number": data.get("contract_number"),
+                        "contract_date": normalize_date(data.get("contract_date")),
+                        "supplier": data.get("supplier")
+                    }
+
+                    logs.append({
+                        "page": page_index+1,
+                        "status": "success",
+                        "key_idx": key_idx,
+                        "model": model_slug,
+                        "tokens": resp_json.get('usage', {}).get('total_tokens', 0)
+                    })
+                    print(f"✅ Page {page_index+1} Success with Key {key_idx+1}")
+                    success = True
+                    
+                else:
+                    print(f"❌ Page {page_index+1} Failed: {response.status_code} - {response.text[:100]}")
+                    logs.append({
+                        "page": page_index+1,
+                        "status": "failed",
+                        "error": f"{response.status_code}: {response.text[:50]}"
+                    })
+                    if response.status_code not in [401, 429, 500, 503]:
+                        break # Try next model
+                        
+            except Exception as e:
+                print(f"❌ Page {page_index+1} Exception: {e}")
+                logs.append({
+                   "page": page_index+1,
+                   "status": "error",
+                   "error": str(e)[:50]
+                })
+
+    if not success:
+        print(f"💀 Page {page_index+1} failed with ALL keys and ALL models.")
+        
+    return items, metadata, logs
+
+
 def parse_invoice(pdf_path: str, method: str = "groq", api_key: str = None) -> Tuple[List[Dict], Dict]:
     """
     Parses the PDF invoice using Groq AI.
@@ -84,21 +256,10 @@ def parse_invoice(pdf_path: str, method: str = "groq", api_key: str = None) -> T
     }
 
     # Render PDF pages to images
-    images = []
     try:
-        print("Rendering PDF pages...")
-        pdf = pdfium.PdfDocument(pdf_path)
-        for i in range(len(pdf)):
-            print(f"Rendering page {i+1}...")
-            page = pdf.get_page(i)
-            bitmap = page.render(scale=2)
-            pil_image = bitmap.to_pil()
-            images.append(pil_image)
-        pdf.close()
-        print(f"Rendered {len(images)} pages.")
+        images = _render_pages(pdf_path)
         debug_info["page_count"] = len(images)
     except Exception as e:
-        print(f"Rendering failed: {e}")
         debug_info["error"] = f"Rendering failed: {e}"
         return [], debug_info
 
@@ -132,159 +293,28 @@ def parse_invoice(pdf_path: str, method: str = "groq", api_key: str = None) -> T
     ]
 
     # Encode images to base64
-    base64_images = []
-    for img in images:
-        buffered = BytesIO()
-        img.save(buffered, format="JPEG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        base64_images.append(img_str)
-
+    base64_images = [_encode_image(img) for img in images]
     print(f"DEBUG: Prepared {len(base64_images)} images for Groq.")
 
     all_items = []
     invoice_metadata = {}
     key_attempts_log = []
 
-    page_prompt = """Extract all line items from this invoice page. Return a valid JSON object with this structure:
-{
-  "items": [
-    {
-      "designation": "Part Number/Designation (Alphanumeric code, e.g. R1.003, 5550-0329c)", 
-      "description": "Description", 
-      "material": "Material", 
-      "name": "Part Name (Text description, e.g. Bushing, Plate, Втулка)", 
-      "quantity": 0, 
-      "unit_price": 0.0, 
-      "total_price": 0.0
-    }
-  ],
-  "invoice_number": "Invoice Number (if found on this page)",
-  "invoice_date": "Invoice Date (if found on this page)",
-  "contract_number": "Contract Number (if found on this page)",
-  "contract_date": "Contract Date (if found on this page)",
-  "supplier": "Supplier Name (if found on this page)"
-}
-If a field is not found, return null or empty string. Ensure the JSON is valid.
-IMPORTANT: 
-1. Do not confuse Designation (code) with Name (text). Designation usually contains numbers and dots/dashes. Name is usually a word.
-2. IGNORE rows that are NOT parts, such as: "Shipping cost", "Freight", "Tax", "VAT", "Total", "Subtotal", "Bank charges", "Insurance".
-3. IGNORE footer text like "Say total...", "Page x of y".
-"""
-
     for i, b64_img in enumerate(base64_images):
-        page_success = False
+        page_items, page_metadata, page_logs = _process_page(i, b64_img, GROQ_MODELS, GROQ_API_KEYS)
+        
+        if page_items:
+            all_items.extend(page_items)
+            
+        key_attempts_log.extend(page_logs)
+        
+        # Capture metadata from the first page
+        if i == 0 and page_metadata:
+            invoice_metadata = page_metadata
 
-        # Try models
-        for model_slug in GROQ_MODELS:
-            if page_success:
-                break
-
-            print(f"--- Page {i+1}: Trying model {model_slug} ---")
-
-            # Try keys
-            for key_idx, current_api_key in enumerate(GROQ_API_KEYS):
-                if page_success:
-                    break
-
-                print(f"--- Page {i+1}: Trying Key {key_idx+1}/{len(GROQ_API_KEYS)} ({current_api_key[-4:]}) ---")
-
-                headers = {
-                    "Authorization": f"Bearer {current_api_key}",
-                    "Content-Type": "application/json"
-                }
-
-                content_payload = [
-                    {"type": "text", "text": page_prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}
-                    }
-                ]
-
-                payload = {
-                    "model": model_slug,
-                    "messages": [{"role": "user", "content": content_payload}],
-                    "temperature": 0.1
-                }
-
-                try:
-                    response = requests.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers=headers,
-                        data=json.dumps(payload),
-                        timeout=60
-                    )
-
-                    if response.status_code == 200:
-                        resp_json = response.json()
-                        content_str = resp_json['choices'][0]['message']['content']
-
-                        # Clean JSON
-                        if "```json" in content_str:
-                            content_str = content_str.split("```json")[1].split("```")[0]
-                        elif "```" in content_str:
-                            content_str = content_str.split("```")[1].split("```")[0]
-
-                        print(f"DEBUG: Raw JSON from Groq (Page {i+1}): {content_str[:100]}...")
-
-                        data = json.loads(content_str)
-
-                        # Aggregate items
-                        page_items = data.get("items", [])
-                        if isinstance(page_items, list):
-                            all_items.extend(page_items)
-
-                        # Aggregate metadata (only from first page)
-                        if i == 0:
-                            invoice_metadata["invoice_number"] = data.get("invoice_number")
-                            invoice_metadata["invoice_date"] = normalize_date(data.get("invoice_date"))
-                            invoice_metadata["contract_number"] = data.get("contract_number")
-                            invoice_metadata["contract_date"] = normalize_date(data.get("contract_date"))
-                            invoice_metadata["supplier"] = data.get("supplier")
-
-                        page_success = True
-                        key_attempts_log.append({
-                            "page": i+1,
-                            "status": "success",
-                            "key_idx": key_idx,
-                            "model": model_slug,
-                            "tokens": resp_json.get('usage', {}).get('total_tokens', 0)
-                        })
-                        print(f"✅ Page {i+1} Success with Key {key_idx+1}")
-
-                    else:
-                        error_msg = response.text
-                        status_code = response.status_code
-                        print(f"❌ Page {i+1} Failed with Key {key_idx+1}: {status_code} - {error_msg[:100]}")
-
-                        key_attempts_log.append({
-                            "page": i+1,
-                            "status": "failed",
-                            "key_idx": key_idx,
-                            "model": model_slug,
-                            "error": f"{status_code}: {error_msg[:50]}"
-                        })
-
-                        # Retry only on specific errors
-                        if status_code in [401, 429, 500, 503]:
-                            continue  # Try next key
-                        else:
-                            break  # Try next model
-
-                except Exception as e:
-                    print(f"❌ Page {i+1} Exception with Key {key_idx+1}: {e}")
-                    key_attempts_log.append({
-                        "page": i+1,
-                        "status": "error",
-                        "key_idx": key_idx,
-                        "model": model_slug,
-                        "error": str(e)[:50]
-                    })
-                    continue  # Try next key
-
-        if not page_success:
-            print(f"💀 Page {i+1} failed with ALL keys and ALL models.")
-            debug_info["error"] = f"Page {i+1} failed after trying all keys/models."
+        # Check for complete failure on this page
+        if not any(log["status"] == "success" for log in page_logs):
+             debug_info["error"] = f"Page {i+1} failed after trying all keys/models."
 
     # Process items
     for item in all_items:
