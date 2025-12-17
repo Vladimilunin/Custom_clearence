@@ -24,7 +24,7 @@ def test_upload():
             try:
                 print("Response JSON:")
                 print(response.json())
-            except:
+            except Exception:
                 print("Response Text:")
                 print(response.text)
                 

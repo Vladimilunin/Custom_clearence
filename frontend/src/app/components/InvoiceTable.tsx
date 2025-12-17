@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 interface InvoiceItem {
@@ -16,6 +16,7 @@ interface InvoiceItem {
     image_path: string | null;
     parsing_method?: string;
     manufacturer?: string;
+    condition?: string;
     quantity?: number | string;
     price?: number;
     amount?: number;
@@ -53,6 +54,7 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
             weight: 0,
             dimensions: '',
             manufacturer: '',
+            condition: '',
             image_path: null,
             found_in_db: false,
             quantity: 1,
@@ -71,7 +73,7 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
     }
 
     // Adjusted template: Added Quantity column (60px) after Name, Reduced Dimensions column
-    const GRID_TEMPLATE = "50px 150px 250px 60px 100px 80px 100px 150px 80px 100px 100px";
+    const GRID_TEMPLATE = "50px 150px 250px 60px 100px 80px 100px 150px 100px 80px 100px 100px";
 
     return (
         <div
@@ -96,7 +98,7 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
                 </div>
             </div>
 
-            <div className="min-w-[1300px]">
+            <div className="min-w-[1400px]">
                 {/* Header */}
                 <div
                     className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase grid items-center"
@@ -110,6 +112,7 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
                     <div className="p-3">Вес (кг)</div>
                     <div className="p-3">Размеры</div>
                     <div className="p-3">Производитель</div>
+                    <div className="p-3">Описание</div>
                     <div className="p-3 text-center">Фото</div>
                     <div className="p-3 text-center">Статус</div>
                     <div className="p-3 text-center">Действия</div>
@@ -193,6 +196,14 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
                                         type="text"
                                         value={item.manufacturer || ''}
                                         onChange={(e) => handleChange(index, 'manufacturer', e.target.value)}
+                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
+                                    />
+                                </div>
+                                <div className="p-2">
+                                    <input
+                                        type="text"
+                                        value={item.description || ''}
+                                        onChange={(e) => handleChange(index, 'description', e.target.value)}
                                         className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
                                     />
                                 </div>

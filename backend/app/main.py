@@ -17,7 +17,26 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Tamozh Gen API")
+from contextlib import asynccontextmanager
+from app.core.config import settings
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("--- STARTUP CONFIG CHECK ---")
+    print(f"GROQ_API_KEY present: {bool(settings.GROQ_API_KEY)}")
+    if settings.GROQ_API_KEY:
+        print(f"GROQ_API_KEY value: {settings.GROQ_API_KEY[:10]}...")
+    else:
+        print("GROQ_API_KEY IS MISSING!")
+    print("----------------------------")
+    yield
+    # Shutdown
+
+app = FastAPI(
+    title="Tamozh Gen API",
+    lifespan=lifespan
+)
 
 origins = [
     "http://localhost:3000",
@@ -29,8 +48,8 @@ app.add_middleware(
     allow_origins=origins,
     allow_origin_regex="https://.*\\.vercel\\.app",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Content-Disposition"],
     expose_headers=["Content-Disposition"],
 )
 
@@ -66,9 +85,10 @@ async def get_image(filename: str):
     if file_stream:
         return StreamingResponse(file_stream, media_type="image/jpeg")
     
-    # Fallback to local if needed (though S3 is primary for prod)
-    # If we really wanted to fallback to local static files, we'd need to check file existence
-    # and serve it. But for now, let's assume S3 is the source of truth.
+    # Fallback to local if needed
+    if os.path.exists(os.path.join(IMAGES_DIR, filename)):
+        return FileResponse(os.path.join(IMAGES_DIR, filename))
+
     raise HTTPException(status_code=404, detail="Image not found")
 
 @app.get("/")

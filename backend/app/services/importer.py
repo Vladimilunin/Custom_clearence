@@ -80,7 +80,7 @@ def import_parts_from_excel(file_path: str, db: Session):
     try:
         # Try xlrd first as it is .xls
         df = pd.read_excel(file_path, engine='xlrd', header=None)
-    except:
+    except Exception:
         try:
             df = pd.read_excel(file_path, engine='openpyxl', header=None)
         except Exception as e:

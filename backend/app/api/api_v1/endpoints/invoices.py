@@ -25,41 +25,53 @@ class InvoiceItem(BaseModel):
     name: str | None = None
     material: str | None = None
     weight: float | None = None
+    weight_unit: str | None = None  # 'кг' или 'г'
     dimensions: str | None = None
     description: str | None = None
     found_in_db: bool = False
     image_path: str | None = None
     parsing_method: str | None = None
     manufacturer: str | None = None
+    condition: str | None = None
     quantity: int | str | None = 1
+    # Electronics fields
+    component_type: str | None = None  # 'electronics' или 'mechanical'
+    specs: Dict[str, Any] | None = None  # Гибкие характеристики
+    
+    # Deprecated/Legacy fields (kept for backward compatibility)
+    current_type: str | None = None
+    input_voltage: str | None = None
+    input_current: str | None = None
+    processor: str | None = None
+    ram_kb: int | None = None
+    rom_mb: int | None = None
+    tnved_code: str | None = None
+    tnved_description: str | None = None
+
 
 class InvoiceUploadResponse(BaseModel):
     items: List[InvoiceItem]
     debug_info: Dict[str, Any] | None = None
     metadata: Dict[str, Any] | None = None
 
-@router.post("/upload", response_model=InvoiceUploadResponse)
-async def upload_invoice(
-    file: UploadFile = File(...),
-    method: str = Form("auto"),
-    api_key: str = Form(None),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Uploads a PDF invoice, parses it (Gemini or OCR), and matches items with the database.
-    """
-    print(f"Received file upload: {file.filename}, method={method}")
-    
+
+class DebugUploadRequest(BaseModel):
+    file_path: str
+    method: str = "groq"
+    api_key: str | None = None
+
+async def process_invoice_contents(contents: bytes, filename: str, method: str, api_key: str, db: AsyncSession):
     # Save temp file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
+    temp_dir = os.path.join(os.getcwd(), "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_path = os.path.join(temp_dir, filename)
     
+    with open(temp_path, "wb") as f:
+        f.write(contents)
+        
     try:
         # Parse invoice
-        # Note: parse_invoice is likely sync/blocking. Ideally run in executor.
-        # For now, we keep it as is, but in prod it should be offloaded.
-        parsed_items, debug_info = await run_in_threadpool(parse_invoice, tmp_path, method=method, api_key=api_key)
+        parsed_items, debug_info = await run_in_threadpool(parse_invoice, pdf_path=temp_path, method=method, api_key=api_key)
         print(f"Parsed items: {parsed_items}")
         
         # Match with DB
@@ -80,7 +92,9 @@ async def upload_invoice(
                 designation=designation,
                 raw_description=item['raw_description'],
                 parsing_method=item.get('parsing_method'),
-                quantity=item.get('quantity', 1)
+                quantity=item.get('quantity', 1),
+                manufacturer=item.get('manufacturer'),
+                condition=item.get('condition')
             )
             
             # Prioritize invoice material if found
@@ -94,9 +108,37 @@ async def upload_invoice(
                 if not res_item.material:
                     res_item.material = part.material
                 res_item.weight = part.weight
+                res_item.weight_unit = getattr(part, 'weight_unit', None)
                 res_item.dimensions = part.dimensions
                 res_item.description = part.description
                 res_item.image_path = part.image_path
+                
+                res_item.condition = part.condition
+                # Electronics fields
+                res_item.component_type = getattr(part, 'component_type', None)
+                res_item.specs = getattr(part, 'specs', None)
+
+                # Determine if electronics
+                is_electronics = (res_item.component_type == 'electronics') or \
+                                 ('электро' in (res_item.material or '').lower()) or \
+                                 (res_item.specs is not None)
+
+                print(f"DEBUG: Item {designation}, is_electronics={is_electronics}, DB_Manuf={part.manufacturer}")
+
+                # Force overwrite manufacturer from DB ONLY if electronics
+                if is_electronics and part.manufacturer:
+                    print(f"DEBUG: Overwriting manufacturer for {designation} to {part.manufacturer}")
+                    res_item.manufacturer = part.manufacturer
+                
+                # Legacy fields
+                res_item.current_type = getattr(part, 'current_type', None)
+                res_item.input_voltage = getattr(part, 'input_voltage', None)
+                res_item.input_current = getattr(part, 'input_current', None)
+                res_item.processor = getattr(part, 'processor', None)
+                res_item.ram_kb = getattr(part, 'ram_kb', None)
+                res_item.rom_mb = getattr(part, 'rom_mb', None)
+                res_item.tnved_code = getattr(part, 'tnved_code', None)
+                res_item.tnved_description = getattr(part, 'tnved_description', None)
             else:
                 # Try Base Part Lookup (e.g. R1.05.00.001-01 -> R1.05.00.001)
                 base_part = None
@@ -113,9 +155,24 @@ async def upload_invoice(
                     if not res_item.material:
                         res_item.material = base_part.material
                     res_item.weight = base_part.weight
+                    res_item.weight_unit = getattr(base_part, 'weight_unit', None)
                     res_item.dimensions = base_part.dimensions
                     res_item.description = base_part.description
                     res_item.image_path = base_part.image_path
+                    res_item.manufacturer = base_part.manufacturer
+                    res_item.condition = base_part.condition
+                    # Electronics fields
+                    res_item.component_type = getattr(base_part, 'component_type', None)
+                    res_item.specs = getattr(base_part, 'specs', None)
+                    # Legacy fields
+                    res_item.current_type = getattr(base_part, 'current_type', None)
+                    res_item.input_voltage = getattr(base_part, 'input_voltage', None)
+                    res_item.input_current = getattr(base_part, 'input_current', None)
+                    res_item.processor = getattr(base_part, 'processor', None)
+                    res_item.ram_kb = getattr(base_part, 'ram_kb', None)
+                    res_item.rom_mb = getattr(base_part, 'rom_mb', None)
+                    res_item.tnved_code = getattr(base_part, 'tnved_code', None)
+                    res_item.tnved_description = getattr(base_part, 'tnved_description', None)
                     
                     if not res_item.description:
                         res_item.description = ""
@@ -136,9 +193,24 @@ async def upload_invoice(
                         if not res_item.material:
                             res_item.material = fuzzy_part.material
                         res_item.weight = fuzzy_part.weight
+                        res_item.weight_unit = getattr(fuzzy_part, 'weight_unit', None)
                         res_item.dimensions = fuzzy_part.dimensions
                         res_item.description = fuzzy_part.description
                         res_item.image_path = fuzzy_part.image_path
+                        res_item.manufacturer = fuzzy_part.manufacturer
+                        res_item.condition = fuzzy_part.condition
+                        # Electronics fields
+                        res_item.component_type = getattr(fuzzy_part, 'component_type', None)
+                        res_item.specs = getattr(fuzzy_part, 'specs', None)
+                        # Legacy fields
+                        res_item.current_type = getattr(fuzzy_part, 'current_type', None)
+                        res_item.input_voltage = getattr(fuzzy_part, 'input_voltage', None)
+                        res_item.input_current = getattr(fuzzy_part, 'input_current', None)
+                        res_item.processor = getattr(fuzzy_part, 'processor', None)
+                        res_item.ram_kb = getattr(fuzzy_part, 'ram_kb', None)
+                        res_item.rom_mb = getattr(fuzzy_part, 'rom_mb', None)
+                        res_item.tnved_code = getattr(fuzzy_part, 'tnved_code', None)
+                        res_item.tnved_description = getattr(fuzzy_part, 'tnved_description', None)
                         
                         if not res_item.description:
                             res_item.description = ""
@@ -163,15 +235,50 @@ async def upload_invoice(
     except Exception as e:
         import traceback
         error_msg = traceback.format_exc()
-        logger.error(f"ERROR in upload_invoice: {str(e)}", exc_info=True)
+        logger.error(f"ERROR in process_invoice_contents: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
         
     finally:
-        if os.path.exists(tmp_path):
+        if os.path.exists(temp_path):
             try:
-                os.unlink(tmp_path)
+                os.unlink(temp_path)
             except Exception as e:
-                print(f"Warning: Could not delete temp file {tmp_path}: {e}")
+                print(f"Warning: Could not delete temp file {temp_path}: {e}")
+
+@router.post("/upload", response_model=InvoiceUploadResponse)
+async def upload_invoice(
+    file: UploadFile = File(...),
+    method: str = Form("auto"),
+    api_key: str = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Uploads a PDF invoice, parses it (Gemini or OCR), and matches items with the database.
+    """
+    print(f"Received file upload: {file.filename}, method={method}")
+    contents = await file.read()
+    return await process_invoice_contents(contents, file.filename, method, api_key, db)
+
+@router.post("/debug_upload", response_model=InvoiceUploadResponse)
+async def debug_upload_invoice(
+    request: DebugUploadRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Debug endpoint to load a file directly from the server's filesystem.
+    Useful when OS file dialogs are not available or for automation.
+    """
+    if not os.path.exists(request.file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+    
+    try:
+        with open(request.file_path, "rb") as f:
+            contents = f.read()
+            
+        filename = os.path.basename(request.file_path)
+        return await process_invoice_contents(contents, filename, request.method, request.api_key, db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 class GenerateRequest(BaseModel):
     items: List[InvoiceItem]
@@ -214,11 +321,24 @@ async def generate_report(
             name=item.name or "",
             material=item.material or "",
             weight=item.weight or 0.0,
+            weight_unit=item.weight_unit,
             dimensions=item.dimensions or "",
             description=item.description or "",
             image_path=item.image_path,
             manufacturer=item.manufacturer,
-            quantity=item.quantity
+            quantity=item.quantity,
+            # Electronics fields
+            component_type=item.component_type,
+            specs=item.specs,
+            # Legacy fields
+            current_type=item.current_type,
+            input_voltage=item.input_voltage,
+            input_current=item.input_current,
+            processor=item.processor,
+            ram_kb=item.ram_kb,
+            rom_mb=item.rom_mb,
+            tnved_code=item.tnved_code,
+            tnved_description=item.tnved_description
         ))
         
     generated_files = []
@@ -277,7 +397,8 @@ async def generate_report(
         return FileResponse(
             generated_files[0]["path"], 
             media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
-            filename=generated_files[0]["name"]
+            filename=generated_files[0]["name"],
+            headers={"Content-Disposition": f'attachment; filename="{generated_files[0]["name"]}"'}
         )
     
     # If multiple files, zip them

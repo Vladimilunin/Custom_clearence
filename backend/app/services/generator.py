@@ -1,6 +1,6 @@
 from docx import Document
 from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 import os
 from app.db.models import Part
@@ -370,20 +370,36 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
     # Title
     h1 = document.add_paragraph()
     h1.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = h1.add_run('Техническое описание')
+    run = h1.add_run('Техническое описание.')
     run.font.name = 'Times New Roman'
     run.font.size = Pt(14)
     run.font.color.rgb = RGBColor(0, 0, 0)
     run.font.bold = True
     
-    # Contract Info
-    if contract_no:
-        contract_text = f"к Контракту № {contract_no}"
-        if contract_date:
-            contract_text += f" от {contract_date}"
-        p_contract = document.add_paragraph(contract_text)
-        p_contract.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        set_font(p_contract.runs[0], font_size=12)
+    # Subtitle / Description
+    p_desc = document.add_paragraph()
+    p_desc.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    text = (
+        "Комплектующие предназначены для сборки Реометра Ротационного BSL R1, "
+        "производства ООО «БСЛ-Лаб» (Россия), декларация о соответствии "
+        "ЕАЭС N RU Д-RU.РА01.В. 89390/23, ТУ 26.51.53-001-82013305-2023)."
+    )
+    run = p_desc.add_run(text)
+    run.font.name = 'Times New Roman'
+    run.font.size = Pt(12)
+    run.font.bold = True
+    
+    # Contract Info (if needed, but usually this replaces it or goes below)
+    # Based on image, it looks like this text IS the header/title block.
+    # The original code had "Contract Info" below. I will keep it but maybe add spacing.
+    # Contract Info removed as requested
+    # if contract_no:
+    #     contract_text = f"к Контракту № {contract_no}"
+    #     if contract_date:
+    #         contract_text += f" от {contract_date}"
+    #     p_contract = document.add_paragraph(contract_text)
+    #     p_contract.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    #     set_font(p_contract.runs[0], font_size=12)
 
     # Determine image directory
     if os.path.exists("/app/images"):
@@ -440,6 +456,9 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
             cell_label.width = Cm(6.0)
             cell_label.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             for paragraph in cell_label.paragraphs:
+                paragraph.paragraph_format.space_before = Pt(0)
+                paragraph.paragraph_format.space_after = Pt(0)
+                paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
                 if keep_next:
                     paragraph.paragraph_format.keep_with_next = True
                 for run in paragraph.runs:
@@ -450,19 +469,68 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
             cell_value.width = Cm(11.0)
             cell_value.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             for paragraph in cell_value.paragraphs:
+                paragraph.paragraph_format.space_before = Pt(0)
+                paragraph.paragraph_format.space_after = Pt(0)
+                paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
                 if keep_next:
                     paragraph.paragraph_format.keep_with_next = True
                 for run in paragraph.runs:
                     set_font(run, bold=False)
 
-        item_manufacturer = part.manufacturer if hasattr(part, 'manufacturer') and part.manufacturer else supplier
+        # Определяем тип компонента (электроника, электромеханика и т.д.)
+        is_electronics = (hasattr(part, 'component_type') and part.component_type == 'electronics') or \
+                        (hasattr(part, 'material') and part.material and 'электро' in part.material.lower()) or \
+                        (hasattr(part, 'specs') and part.specs)
+
+        # Производитель: из БД только для электроники, иначе из инвойса (supplier)
+        if is_electronics and hasattr(part, 'manufacturer') and part.manufacturer:
+            item_manufacturer = part.manufacturer
+        else:
+            item_manufacturer = supplier
 
         add_row("Наименование", part.name)
         add_row("Обозначение", part.designation)
-        add_row("Размеры (мм)", part.dimensions)
-        add_row("Материал изготовления", part.material)
         add_row("Производитель", item_manufacturer)
         add_row("Страна происхождения", country_of_origin)
+
+        if is_electronics:
+            # Формат для электроники с разделом "Характеристики"
+            add_row("Характеристики", "")  # Заголовок раздела
+            
+            if hasattr(part, 'specs') and part.specs:
+                # Render specs from JSON (flexible format)
+                for key, value in part.specs.items():
+                    add_row(key, str(value))
+            else:
+                # Legacy format fallback
+                if hasattr(part, 'current_type') and part.current_type:
+                    add_row("Род тока", part.current_type)
+                if hasattr(part, 'input_voltage') and part.input_voltage:
+                    add_row("Входное напряжение, В", part.input_voltage)
+                if hasattr(part, 'input_current') and part.input_current:
+                    add_row("Входной ток, А", part.input_current)
+                if hasattr(part, 'processor') and part.processor:
+                    add_row("Процессор", part.processor)
+                if hasattr(part, 'ram_kb') and part.ram_kb:
+                    add_row("Оперативная память, Кб", str(part.ram_kb))
+                if hasattr(part, 'rom_mb') and part.rom_mb:
+                    add_row("Постоянная память, МБ", str(part.rom_mb))
+            
+            add_row("Материал изготовления", part.material)
+            add_row("Размеры (мм)", part.dimensions)
+            
+            # Масса с единицей измерения
+            if hasattr(part, 'weight') and part.weight:
+                weight_unit = getattr(part, 'weight_unit', 'кг') or 'кг'
+                add_row(f"Масса, {weight_unit}", str(part.weight))
+        else:
+            # Стандартный формат для механических деталей
+            add_row("Размеры (мм)", part.dimensions)
+            add_row("Материал изготовления", part.material)
+            if hasattr(part, 'condition') and part.condition:
+                add_row("Состояние", part.condition)
+            if hasattr(part, 'description') and part.description:
+                add_row("Технические характеристики", part.description)
             
         row_image = table.add_row()
         set_row_cant_split(row_image)
@@ -506,8 +574,8 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                         img.save(img_byte_arr, format='PNG')
                         img_byte_arr.seek(0)
                         
-                        max_width_cm = 7.0
-                        max_height_cm = 4.5
+                        max_width_cm = 14.0
+                        max_height_cm = 9.0
                         width, height = img.size
                         aspect_ratio = width / height
                         new_width = max_width_cm
@@ -527,6 +595,14 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                 p_img_label.add_run("\n[Image file not found]")
         else:
             p_img_label.add_run("\n[No image available]")
+        
+        # Добавляем ТН ВЭД код для электроники (после фото)
+        if is_electronics and hasattr(part, 'tnved_code') and part.tnved_code:
+            tnved_text = f"\n\n{part.tnved_code}"
+            if hasattr(part, 'tnved_description') and part.tnved_description:
+                tnved_text += f" - {part.tnved_description}"
+            run_tnved = p_img_label.add_run(tnved_text)
+            set_font(run_tnved, bold=True, font_size=10)
             
     create_signature(document, add_facsimile)
             

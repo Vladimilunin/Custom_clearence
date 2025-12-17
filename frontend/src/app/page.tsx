@@ -17,7 +17,30 @@ interface InvoiceItem {
   image_path: string | null;
   parsing_method?: string;
   manufacturer?: string;
+  condition?: string;
   quantity?: number | string;
+}
+
+interface KeyAttempt {
+  page: number;
+  status: string;
+  key_idx: number;
+  model: string;
+  tokens?: number;
+  error?: string;
+}
+
+interface DebugInfo {
+  method_used: string;
+  gemini_model?: string;
+  token_usage?: {
+    prompt_tokens: number;
+    completion_tokens?: number;
+    candidates_tokens?: number;
+    total_tokens: number;
+  };
+  error?: string;
+  key_attempts?: KeyAttempt[];
 }
 
 export default function Home() {
@@ -25,9 +48,9 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const [parsingMethod, setParsingMethod] = useState('openrouter_gemini_2_5_flash_lite');
+  const [parsingMethod, setParsingMethod] = useState('groq');
   const [apiKey, setApiKey] = useState('');
-  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
   const handleUpload = async (file: File) => {
     setIsLoading(true);
@@ -46,7 +69,11 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error('Ошибка загрузки');
+        const err = await response.json().catch(() => ({ detail: 'Ошибка загрузки (неверный ответ сервера)' }));
+        const errorMessage = typeof err.detail === 'object'
+          ? JSON.stringify(err.detail, null, 2)
+          : (err.detail || 'Ошибка загрузки');
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -57,7 +84,7 @@ export default function Home() {
 
       const newItems = data.items.map((item: InvoiceItem) => ({
         ...item,
-        manufacturer: newInvoiceSupplier
+        manufacturer: item.manufacturer || newInvoiceSupplier
       }));
 
       setItems(prev => [...prev, ...newItems]);
@@ -99,6 +126,64 @@ export default function Home() {
     gen_decision_130: false,
     add_facsimile: false
   });
+
+  // Debug State
+  const [debugFilePath, setDebugFilePath] = useState('');
+  const [isDebugLoading, setIsDebugLoading] = useState(false);
+
+  const handleDebugUpload = async () => {
+    if (!debugFilePath) return;
+    setIsDebugLoading(true);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/v1/invoices/debug_upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_path: debugFilePath,
+          method: parsingMethod,
+          api_key: apiKey || null
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        const errorMessage = typeof err.detail === 'object'
+          ? JSON.stringify(err.detail, null, 2)
+          : (err.detail || 'Ошибка загрузки');
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+
+      // Same logic as handleUpload
+      const newInvoiceSupplier = data.metadata?.supplier || reportMetadata.supplier;
+      const newItems = data.items.map((item: InvoiceItem) => ({
+        ...item,
+        manufacturer: newInvoiceSupplier
+      }));
+
+      setItems(prev => [...prev, ...newItems]);
+      setDebugInfo(data.debug_info);
+
+      if (data.metadata) {
+        setReportMetadata(prev => ({
+          ...prev,
+          contract_no: data.metadata.invoice_number || prev.contract_no,
+          contract_date: data.metadata.invoice_date || prev.contract_date,
+        }));
+      }
+    } catch (error: unknown) {
+      console.error('Error debug uploading:', error);
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      alert(`Ошибка: ${message}`);
+    } finally {
+      setIsDebugLoading(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (items.length === 0) {
@@ -142,11 +227,23 @@ export default function Home() {
 
       // Try to get filename from header
       const contentDisposition = response.headers.get('Content-Disposition');
+      console.log('Content-Disposition Header:', contentDisposition); // DEBUG LOG
       let filename = 'report.docx';
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (filenameMatch && filenameMatch.length === 2) {
-          filename = filenameMatch[1];
+        // Handle filename* (UTF-8) and regular filename
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+        const matches = filenameRegex.exec(contentDisposition);
+        if (matches != null && matches[1]) {
+          filename = matches[1].replace(/['"]/g, '');
+        }
+        console.log('Extracted filename:', filename); // DEBUG LOG
+
+        // Fallback for simpler cases or if the above fails but filename is present
+        if (filename === 'report.docx' && contentDisposition.includes('filename=')) {
+          const parts = contentDisposition.split('filename=');
+          if (parts.length > 1) {
+            filename = parts[1].split(';')[0].replace(/['"]/g, '').trim();
+          }
         }
       } else {
         // Fallback based on selection
@@ -165,11 +262,23 @@ export default function Home() {
         }
       }
 
+      // Final fallback if filename is somehow empty or failed
+      if (!filename || filename.trim() === '') {
+        filename = `report_${new Date().getTime()}.docx`;
+      }
+
+      console.log('Final filename used:', filename); // DEBUG LOG
+      // alert(`Filename: ${filename}`); // Temporary debug alert
+
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+
+      // Small delay before revoking
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 100);
     } catch (error) {
       console.error('Error generating report:', error);
       alert('Не удалось сгенерировать отчет');
@@ -200,25 +309,44 @@ export default function Home() {
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
               >
 
-                <option value="openrouter_gemini_2_5_flash_lite">OpenRouter (Gemini 2.5 Flash Lite)</option>
-                <option value="siliconflow_qwen">SiliconFlow (Qwen 3 VL)</option>
-                <option value="deepseek_v3">DeepSeek V3</option>
-
+                <option value="groq">Groq (meta-llama/llama-4-scout-17b-16e-instruct)</option>
               </select>
             </div>
             <div className="w-full md:w-2/3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">API Key (Gemini или OpenRouter)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">API Key (Опционально)</label>
               <input
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Оставьте пустым для использования ключа по умолчанию"
+                placeholder="Оставьте пустым для использования встроенных ключей"
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
               />
             </div>
           </div>
 
           <FileUpload onUpload={handleUpload} isLoading={isLoading} />
+
+          {/* Debug Upload Section */}
+          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <h3 className="text-sm font-semibold text-yellow-800 mb-2">Debug: Загрузка по локальному пути (Server-Side)</h3>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={debugFilePath}
+                onChange={(e) => setDebugFilePath(e.target.value)}
+                placeholder="C:\Path\To\File.pdf"
+                className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm p-2 border"
+              />
+              <button
+                onClick={handleDebugUpload}
+                disabled={isDebugLoading || !debugFilePath}
+                className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 text-sm font-medium shadow-sm transition-colors"
+              >
+                {isDebugLoading ? 'Загрузка...' : 'Загрузить'}
+              </button>
+            </div>
+            <p className="text-xs text-yellow-600 mt-1">Используйте абсолютный путь к файлу на сервере.</p>
+          </div>
 
           {debugInfo && (
             <div className="mt-4 p-4 bg-gray-50 rounded-md border text-sm">
@@ -242,6 +370,23 @@ export default function Home() {
                     </ul>
                   </div>
                 )}
+
+                {debugInfo.key_attempts && (
+                  <div className="col-span-2 mt-2">
+                    <p className="font-medium">Журнал ключей (Key Rotation):</p>
+                    <div className="max-h-40 overflow-y-auto text-xs bg-gray-100 p-2 rounded border">
+                      {debugInfo.key_attempts.map((attempt: KeyAttempt, idx: number) => (
+                        <div key={idx} className={`mb-1 ${attempt.status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                          <strong>Page {attempt.page}</strong>: Key #{attempt.key_idx + 1} ({attempt.model})
+                          <span className="font-mono"> - {attempt.status.toUpperCase()}</span>
+                          {attempt.tokens ? ` (${attempt.tokens} tok)` : ''}
+                          {attempt.error ? ` [Error: ${attempt.error}]` : ''}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {debugInfo.error && (
                   <div className="col-span-2 mt-2 text-red-600">
                     <span className="font-medium">Ошибка:</span> {debugInfo.error}
