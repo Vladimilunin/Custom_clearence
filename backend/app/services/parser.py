@@ -119,13 +119,28 @@ def _process_page(
     page_index: int, 
     b64_img: str, 
     models: List[str], 
-    api_keys: List[str]
+    api_keys: List[str],
+    max_retries: int = 3
 ) -> Tuple[List[Dict], Dict, List[Dict]]:
     """
     Process a single page with Groq AI using model/key rotation.
+    
+    Features:
+    - Model fallback (tries multiple models)
+    - Key rotation (tries multiple API keys)
+    - Exponential backoff for rate limits
+    
+    Args:
+        page_index: 0-based page index
+        b64_img: Base64-encoded image
+        models: List of model slugs to try
+        api_keys: List of API keys to rotate
+        max_retries: Max retries per key for transient errors
+        
     Returns: (items, metadata, logs)
     """
     import requests
+    import time
     
     items = []
     metadata = {}
@@ -144,83 +159,123 @@ def _process_page(
                 
             print(f"--- Page {page_index+1}: Trying Key {key_idx+1}/{len(api_keys)} ({api_key[-4:]}) ---")
             
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
+            # Retry logic with exponential backoff
+            for retry in range(max_retries):
+                if success:
+                    break
+                    
+                if retry > 0:
+                    wait_time = 2 ** retry  # 2, 4, 8 seconds
+                    print(f"⏳ Retry {retry}/{max_retries}, waiting {wait_time}s...")
+                    time.sleep(wait_time)
             
-            payload = {
-                "model": model_slug,
-                "messages": [{
-                    "role": "user", 
-                    "content": [
-                        {"type": "text", "text": PAGE_PROMPT},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}}
-                    ]
-                }],
-                "temperature": 0.1
-            }
-            
-            try:
-                response = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers=headers,
-                    data=json.dumps(payload),
-                    timeout=60
-                )
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
                 
-                if response.status_code == 200:
-                    resp_json = response.json()
-                    content = resp_json['choices'][0]['message']['content']
+                payload = {
+                    "model": model_slug,
+                    "messages": [{
+                        "role": "user", 
+                        "content": [
+                            {"type": "text", "text": PAGE_PROMPT},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}}
+                        ]
+                    }],
+                    "temperature": 0.1
+                }
+                
+                try:
+                    response = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers=headers,
+                        data=json.dumps(payload),
+                        timeout=60
+                    )
                     
-                    # Basic cleanup
-                    if "```json" in content:
-                        content = content.split("```json")[1].split("```")[0]
-                    elif "```" in content:
-                        content = content.split("```")[1].split("```")[0]
-                    
-                    print(f"DEBUG: Raw JSON from Groq (Page {page_index+1}): {content[:100]}...")
-                    data = json.loads(content)
-                    
-                    if isinstance(data.get("items"), list):
-                        items = data["items"]
-                    
-                    # Metadata only if valid
-                    metadata = {
-                        "invoice_number": data.get("invoice_number"),
-                        "invoice_date": normalize_date(data.get("invoice_date")),
-                        "contract_number": data.get("contract_number"),
-                        "contract_date": normalize_date(data.get("contract_date")),
-                        "supplier": data.get("supplier")
-                    }
-
-                    logs.append({
-                        "page": page_index+1,
-                        "status": "success",
-                        "key_idx": key_idx,
-                        "model": model_slug,
-                        "tokens": resp_json.get('usage', {}).get('total_tokens', 0)
-                    })
-                    print(f"✅ Page {page_index+1} Success with Key {key_idx+1}")
-                    success = True
-                    
-                else:
-                    print(f"❌ Page {page_index+1} Failed: {response.status_code} - {response.text[:100]}")
-                    logs.append({
-                        "page": page_index+1,
-                        "status": "failed",
-                        "error": f"{response.status_code}: {response.text[:50]}"
-                    })
-                    if response.status_code not in [401, 429, 500, 503]:
-                        break # Try next model
+                    if response.status_code == 200:
+                        resp_json = response.json()
+                        content = resp_json['choices'][0]['message']['content']
                         
-            except Exception as e:
-                print(f"❌ Page {page_index+1} Exception: {e}")
-                logs.append({
-                   "page": page_index+1,
-                   "status": "error",
-                   "error": str(e)[:50]
-                })
+                        # Basic cleanup
+                        if "```json" in content:
+                            content = content.split("```json")[1].split("```")[0]
+                        elif "```" in content:
+                            content = content.split("```")[1].split("```")[0]
+                        
+                        print(f"DEBUG: Raw JSON from Groq (Page {page_index+1}): {content[:100]}...")
+                        data = json.loads(content)
+                        
+                        if isinstance(data.get("items"), list):
+                            items = data["items"]
+                        
+                        # Metadata only if valid
+                        metadata = {
+                            "invoice_number": data.get("invoice_number"),
+                            "invoice_date": normalize_date(data.get("invoice_date")),
+                            "contract_number": data.get("contract_number"),
+                            "contract_date": normalize_date(data.get("contract_date")),
+                            "supplier": data.get("supplier")
+                        }
+
+                        logs.append({
+                            "page": page_index+1,
+                            "status": "success",
+                            "key_idx": key_idx,
+                            "model": model_slug,
+                            "tokens": resp_json.get('usage', {}).get('total_tokens', 0),
+                            "retries": retry
+                        })
+                        print(f"✅ Page {page_index+1} Success with Key {key_idx+1} (retries: {retry})")
+                        success = True
+                        break  # Exit retry loop
+                        
+                    elif response.status_code == 429:
+                        # Rate limit - retry with backoff
+                        print(f"⚠️ Rate limit hit, will retry...")
+                        logs.append({
+                            "page": page_index+1,
+                            "status": "rate_limit",
+                            "key_idx": key_idx,
+                            "model": model_slug,
+                            "retry": retry
+                        })
+                        continue  # Continue retry loop
+                        
+                    elif response.status_code in [500, 502, 503, 504]:
+                        # Server error - retry
+                        print(f"⚠️ Server error {response.status_code}, will retry...")
+                        continue
+                        
+                    else:
+                        print(f"❌ Page {page_index+1} Failed: {response.status_code} - {response.text[:100]}")
+                        logs.append({
+                            "page": page_index+1,
+                            "status": "failed",
+                            "key_idx": key_idx,
+                            "model": model_slug,
+                            "error": f"{response.status_code}: {response.text[:50]}"
+                        })
+                        break  # Try next key (don't retry for auth errors etc)
+                        
+                except requests.exceptions.Timeout:
+                    print(f"⏱️ Timeout on page {page_index+1}, retry {retry+1}/{max_retries}")
+                    logs.append({
+                        "page": page_index+1,
+                        "status": "timeout",
+                        "retry": retry
+                    })
+                    continue
+                    
+                except Exception as e:
+                    print(f"❌ Page {page_index+1} Exception: {e}")
+                    logs.append({
+                       "page": page_index+1,
+                       "status": "error",
+                       "error": str(e)[:50]
+                    })
+                    break  # Don't retry on unknown errors
 
     if not success:
         print(f"💀 Page {page_index+1} failed with ALL keys and ALL models.")

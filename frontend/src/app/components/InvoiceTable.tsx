@@ -212,7 +212,14 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
                                         <img
                                             src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${item.image_path}`}
                                             alt="Деталь"
+                                            loading="lazy"
+                                            decoding="async"
                                             className="h-12 w-12 object-cover rounded mx-auto border border-gray-200 shadow-sm"
+                                            onError={(e) => {
+                                                const target = e.target as HTMLImageElement;
+                                                target.style.display = 'none';
+                                                target.parentElement!.innerHTML = '<span class="text-gray-400 text-xs">Ошибка</span>';
+                                            }}
                                         />
                                     ) : (
                                         <span className="text-gray-400 text-xs">Нет</span>
