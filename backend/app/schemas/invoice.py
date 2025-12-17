@@ -27,6 +27,9 @@ class InvoiceItem(BaseModel):
     manufacturer: Optional[str] = Field(None, description="Manufacturer name")
     condition: Optional[str] = Field(None, description="Condition: 'Новое' or 'Б/У'")
     quantity: Optional[int | str] = Field(1, description="Item quantity")
+    price: Optional[float] = Field(None, description="Unit price")
+    amount: Optional[float] = Field(None, description="Total amount")
+    currency: Optional[str] = Field("USD", description="Currency code")
     
     # Electronics-specific fields
     component_type: Optional[str] = Field(None, description="'electronics' or 'mechanical'")
