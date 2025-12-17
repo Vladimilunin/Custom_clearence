@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+.env.cloud
+!.env.example
+!.env.local.example
+!.env.cloud.example
+
+# Build
+dist/
+build/
+.next/
+.vercel/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Large Assets / Backups
+_изображения/
+backups/
+parts_db.xls/
+*.pdf
+*.zip

@@ -1,0 +1,5 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/tamozh-backend-479110/backend-minimal', '-f', 'Dockerfile.minimal', '.']
+images:
+  - 'gcr.io/tamozh-backend-479110/backend-minimal'
