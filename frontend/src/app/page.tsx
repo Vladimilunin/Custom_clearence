@@ -128,62 +128,9 @@ export default function Home() {
   });
 
   // Debug State
-  const [debugFilePath, setDebugFilePath] = useState('');
-  const [isDebugLoading, setIsDebugLoading] = useState(false);
 
-  const handleDebugUpload = async () => {
-    if (!debugFilePath) return;
-    setIsDebugLoading(true);
 
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/v1/invoices/debug_upload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          file_path: debugFilePath,
-          method: parsingMethod,
-          api_key: apiKey || null
-        }),
-      });
 
-      if (!response.ok) {
-        const err = await response.json();
-        const errorMessage = typeof err.detail === 'object'
-          ? JSON.stringify(err.detail, null, 2)
-          : (err.detail || 'Ошибка загрузки');
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-
-      // Same logic as handleUpload
-      const newInvoiceSupplier = data.metadata?.supplier || reportMetadata.supplier;
-      const newItems = data.items.map((item: InvoiceItem) => ({
-        ...item,
-        manufacturer: newInvoiceSupplier
-      }));
-
-      setItems(prev => [...prev, ...newItems]);
-      setDebugInfo(data.debug_info);
-
-      if (data.metadata) {
-        setReportMetadata(prev => ({
-          ...prev,
-          contract_no: data.metadata.invoice_number || prev.contract_no,
-          contract_date: data.metadata.invoice_date || prev.contract_date,
-        }));
-      }
-    } catch (error: unknown) {
-      console.error('Error debug uploading:', error);
-      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-      alert(`Ошибка: ${message}`);
-    } finally {
-      setIsDebugLoading(false);
-    }
-  };
 
   const handleGenerate = async () => {
     if (items.length === 0) {
@@ -327,26 +274,7 @@ export default function Home() {
           <FileUpload onUpload={handleUpload} isLoading={isLoading} />
 
           {/* Debug Upload Section */}
-          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-            <h3 className="text-sm font-semibold text-yellow-800 mb-2">Debug: Загрузка по локальному пути (Server-Side)</h3>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={debugFilePath}
-                onChange={(e) => setDebugFilePath(e.target.value)}
-                placeholder="C:\Path\To\File.pdf"
-                className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm p-2 border"
-              />
-              <button
-                onClick={handleDebugUpload}
-                disabled={isDebugLoading || !debugFilePath}
-                className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 text-sm font-medium shadow-sm transition-colors"
-              >
-                {isDebugLoading ? 'Загрузка...' : 'Загрузить'}
-              </button>
-            </div>
-            <p className="text-xs text-yellow-600 mt-1">Используйте абсолютный путь к файлу на сервере.</p>
-          </div>
+
 
           {debugInfo && (
             <div className="mt-4 p-4 bg-gray-50 rounded-md border text-sm">
