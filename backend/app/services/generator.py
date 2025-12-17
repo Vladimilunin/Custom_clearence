@@ -1,36 +1,34 @@
+"""
+DOCX Document Generator for Technical Descriptions and Letters.
+
+Generates:
+- Technical descriptions (Техническое описание)
+- Non-insurance letters (Письмо о нестраховании)  
+- Decision 130 notifications (Уведомление по Решению 130)
+"""
 from docx import Document
 from docx.shared import Cm, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 import os
+from datetime import datetime
+
 from app.db.models import Part
 from app.services.parser import normalize_date
 from app.services.s3 import s3_service
-from datetime import datetime
+from app.services.docx_helpers import (
+    set_font,
+    remove_table_borders,
+    add_table_borders,
+    set_row_cant_split,
+    get_asset_path,
+    get_images_dir,
+    is_electronics_part,
+    get_part_manufacturer,
+    create_document_from_template,
+    setup_document_styles,
+)
 
-# Helper to set font for a run
-def set_font(run, font_name='Times New Roman', font_size=12, bold=False, color=None):
-    run.font.name = font_name
-    run.font.size = Pt(font_size)
-    run.font.bold = bold
-    if color:
-        run.font.color.rgb = color
-
-def remove_table_borders(table):
-    """
-    Explicitly remove all borders from a table.
-    """
-    from docx.oxml.shared import OxmlElement
-    from docx.oxml.ns import qn
-    
-    tbl = table._tbl
-    tblPr = tbl.tblPr
-    tblBorders = OxmlElement('w:tblBorders')
-    for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
-        border = OxmlElement(f'w:{border_name}')
-        border.set(qn('w:val'), 'nil')
-        tblBorders.append(border)
-    tblPr.append(tblBorders)
 
 def create_header(document):
     section = document.sections[0]

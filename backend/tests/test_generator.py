@@ -143,60 +143,48 @@ class TestElectronicsDetection:
 
     def test_electronics_by_component_type(self):
         """Test that parts with component_type='electronics' are detected."""
+        from app.services.docx_helpers import is_electronics_part
+        
         class MockPart:
             component_type = 'electronics'
             material = 'Plastic'
             specs = None
         
         part = MockPart()
-        is_electronics = (
-            (hasattr(part, 'component_type') and part.component_type == 'electronics') or
-            (hasattr(part, 'material') and part.material and 'электро' in part.material.lower()) or
-            (hasattr(part, 'specs') and part.specs)
-        )
-        assert is_electronics == True
+        assert is_electronics_part(part) == True
 
     def test_electronics_by_material(self):
         """Test that parts with 'электро' in material are detected."""
+        from app.services.docx_helpers import is_electronics_part
+        
         class MockPart:
             component_type = None
             material = 'Электроника, пластик'
             specs = None
         
         part = MockPart()
-        is_electronics = (
-            (hasattr(part, 'component_type') and part.component_type == 'electronics') or
-            (hasattr(part, 'material') and part.material and 'электро' in part.material.lower()) or
-            (hasattr(part, 'specs') and part.specs)
-        )
-        assert is_electronics == True
+        assert is_electronics_part(part) == True
 
     def test_electronics_by_specs(self):
         """Test that parts with specs dict are detected as electronics."""
+        from app.services.docx_helpers import is_electronics_part
+        
         class MockPart:
             component_type = None
             material = 'Steel'
             specs = {"Входное напряжение": "24V"}
         
         part = MockPart()
-        is_electronics = (
-            (hasattr(part, 'component_type') and part.component_type == 'electronics') or
-            (hasattr(part, 'material') and part.material and 'электро' in part.material.lower()) or
-            (hasattr(part, 'specs') and part.specs)
-        )
-        assert is_electronics == True
+        assert is_electronics_part(part) == True
 
     def test_mechanical_part(self):
         """Test that regular parts are not detected as electronics."""
+        from app.services.docx_helpers import is_electronics_part
+        
         class MockPart:
             component_type = 'mechanical'
             material = 'Steel'
             specs = None
         
         part = MockPart()
-        is_electronics = (
-            (hasattr(part, 'component_type') and part.component_type == 'electronics') or
-            (hasattr(part, 'material') and part.material and 'электро' in part.material.lower()) or
-            (hasattr(part, 'specs') and part.specs)
-        )
-        assert is_electronics == False
+        assert is_electronics_part(part) == False
