@@ -4,16 +4,13 @@ Document builder utilities for DOCX generation.
 This module provides helper classes and functions for building
 Word documents with consistent formatting.
 """
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+import os
+from dataclasses import dataclass
+from typing import Any, List, Optional
+
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-import os
-from datetime import datetime
-from typing import Optional, List, Any
-from dataclasses import dataclass, field
+from docx.shared import Cm, Pt, RGBColor
 
 
 @dataclass
@@ -25,7 +22,7 @@ class DocumentStyle:
     color: Optional[RGBColor] = None
 
 
-@dataclass  
+@dataclass
 class PartInfo:
     """Internal representation of a part for document generation."""
     designation: str
@@ -38,7 +35,7 @@ class PartInfo:
     image_path: Optional[str] = None
     component_type: str = ""
     manufacturer: str = ""
-    
+
     # Electronics specific
     is_electronics: bool = False
     tnved_code: str = ""
@@ -49,7 +46,7 @@ class PartInfo:
     ram_kb: int = 0
     rom_mb: int = 0
     current_type: str = ""
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'PartInfo':
         """Create PartInfo from dictionary."""
@@ -74,7 +71,7 @@ class PartInfo:
             rom_mb=int(data.get('rom_mb', 0) or 0),
             current_type=data.get('current_type', ''),
         )
-    
+
     @classmethod
     def from_model(cls, part: Any) -> 'PartInfo':
         """Create PartInfo from database model."""
@@ -103,13 +100,13 @@ class PartInfo:
 
 class FontHelper:
     """Helper class for font formatting."""
-    
+
     @staticmethod
     def set_font(
-        run, 
-        font_name: str = 'Times New Roman', 
-        font_size: int = 12, 
-        bold: bool = False, 
+        run,
+        font_name: str = 'Times New Roman',
+        font_size: int = 12,
+        bold: bool = False,
         color: Optional[RGBColor] = None
     ):
         """Apply font settings to a run."""
@@ -118,12 +115,12 @@ class FontHelper:
         run.font.bold = bold
         if color:
             run.font.color.rgb = color
-    
+
     @staticmethod
     def apply_style(run, style: DocumentStyle):
         """Apply DocumentStyle to a run."""
         FontHelper.set_font(
-            run, 
+            run,
             font_name=style.font_name,
             font_size=style.font_size,
             bold=style.bold,
@@ -133,7 +130,7 @@ class FontHelper:
 
 class TableHelper:
     """Helper class for table manipulation."""
-    
+
     @staticmethod
     def remove_borders(table):
         """Remove all borders from a table."""
@@ -145,7 +142,7 @@ class TableHelper:
             border.set(qn('w:val'), 'nil')
             tblBorders.append(border)
         tblPr.append(tblBorders)
-    
+
     @staticmethod
     def set_cell_padding(cell, padding_pt: int = 1):
         """Set cell padding in points."""
@@ -159,14 +156,14 @@ class TableHelper:
             node.set(qn('w:type'), 'dxa')
             tcMar.append(node)
         tcPr.append(tcMar)
-    
+
     @staticmethod
     def set_row_cant_split(row):
         """Prevent row from splitting across pages."""
         trPr = row._tr.get_or_add_trPr()
         cantSplit = OxmlElement('w:cantSplit')
         trPr.append(cantSplit)
-    
+
     @staticmethod
     def set_column_widths(table, widths_cm: List[float]):
         """Set column widths in centimeters."""
@@ -177,30 +174,30 @@ class TableHelper:
 
 class ImageHelper:
     """Helper class for image handling."""
-    
+
     @staticmethod
     def find_image_path(relative_path: str) -> Optional[str]:
         """Find absolute path for an image, checking multiple locations."""
         if not relative_path:
             return None
-            
+
         # Direct path
         if os.path.exists(relative_path):
             return relative_path
-        
+
         # Docker path
         docker_path = f"/app/{relative_path}"
         if os.path.exists(docker_path):
             return docker_path
-        
+
         # Relative to backend
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         local_path = os.path.join(base_dir, relative_path)
         if os.path.exists(local_path):
             return local_path
-        
+
         return None
-    
+
     @staticmethod
     def add_float_picture(run, image_path: str, width, pos_x: int, pos_y: int):
         """
@@ -209,10 +206,10 @@ class ImageHelper:
         """
         # Add the picture normally first to get the relationship ID
         inline = run.add_picture(image_path, width=width)._inline
-        
+
         # Get the graphic object
         graphic = inline.graphic
-        
+
         # Create the anchor element
         anchor = OxmlElement('wp:anchor')
         anchor.set('distT', "0")
@@ -225,13 +222,13 @@ class ImageHelper:
         anchor.set('locked', "0")
         anchor.set('layoutInCell', "1")
         anchor.set('allowOverlap', "1")
-        
+
         # Simple Positioning
         simplePos = OxmlElement('wp:simplePos')
         simplePos.set('x', "0")
         simplePos.set('y', "0")
         anchor.append(simplePos)
-        
+
         # Horizontal Position
         positionH = OxmlElement('wp:positionH')
         positionH.set('relativeFrom', "column")
@@ -239,7 +236,7 @@ class ImageHelper:
         posOffsetH.text = str(pos_x)
         positionH.append(posOffsetH)
         anchor.append(positionH)
-        
+
         # Vertical Position
         positionV = OxmlElement('wp:positionV')
         positionV.set('relativeFrom', "paragraph")
@@ -247,26 +244,26 @@ class ImageHelper:
         posOffsetV.text = str(pos_y)
         positionV.append(posOffsetV)
         anchor.append(positionV)
-        
+
         # Extent (Size)
         extent = OxmlElement('wp:extent')
         extent.set('cx', str(inline.extent.cx))
         extent.set('cy', str(inline.extent.cy))
         anchor.append(extent)
-        
+
         # Wrap None (In Front of Text behavior)
         wrapNone = OxmlElement('wp:wrapNone')
         anchor.append(wrapNone)
-        
+
         # DocPr
         docPr = OxmlElement('wp:docPr')
         docPr.set('id', '666')
         docPr.set('name', 'Floating Image')
         anchor.append(docPr)
-        
+
         # Graphic
         anchor.append(graphic)
-        
+
         # Replace inline with anchor
         inline.getparent().replace(inline, anchor)
         return anchor
@@ -274,21 +271,21 @@ class ImageHelper:
 
 class PageNumberHelper:
     """Helper for adding page numbers."""
-    
+
     @staticmethod
     def add_page_number(paragraph):
         """Add page number field to a paragraph."""
         run = paragraph.add_run()
-        
+
         fldChar1 = OxmlElement('w:fldChar')
         fldChar1.set(qn('w:fldCharType'), 'begin')
         run._r.append(fldChar1)
-        
+
         instrText = OxmlElement('w:instrText')
         instrText.set(qn('xml:space'), 'preserve')
         instrText.text = "PAGE"
         run._r.append(instrText)
-        
+
         fldChar2 = OxmlElement('w:fldChar')
         fldChar2.set(qn('w:fldCharType'), 'end')
         run._r.append(fldChar2)

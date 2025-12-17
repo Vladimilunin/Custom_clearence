@@ -1,7 +1,9 @@
+import logging
+
 import boto3
 from botocore.exceptions import NoCredentialsError
+
 from app.core.config import settings
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +32,11 @@ class S3Service:
             # For now, let's return the object name or a constructed URL if we know the public domain.
             # Assuming we want to return the full URL if possible, but R2 public access setup varies.
             # Let's return the object key for now, or try to construct a standard URL.
-            
+
             # If S3_PUBLIC_DOMAIN is set, use it.
             if hasattr(settings, 'S3_PUBLIC_DOMAIN') and settings.S3_PUBLIC_DOMAIN:
                  return f"{settings.S3_PUBLIC_DOMAIN}/{object_name}"
-            
+
             return object_name
         except NoCredentialsError:
             logger.error("Credentials not available")

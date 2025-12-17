@@ -1,10 +1,12 @@
 from typing import Any, List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.db.session import get_db
+
 from app.db.models import Part
-from app.schemas import PartSchema, PartCreate, PartUpdate
+from app.db.session import get_db
+from app.schemas import PartCreate, PartSchema, PartUpdate
 
 router = APIRouter()
 
@@ -19,14 +21,14 @@ async def read_parts(
     Retrieve parts.
     """
     query = select(Part)
-    
+
     if search:
         search_filter = f"%{search}%"
         query = query.filter(
-            (Part.designation.ilike(search_filter)) | 
+            (Part.designation.ilike(search_filter)) |
             (Part.name.ilike(search_filter))
         )
-        
+
     result = await db.execute(query.offset(skip).limit(limit))
     parts = result.scalars().all()
     return parts
@@ -46,11 +48,11 @@ async def update_part(
     part = result.scalars().first()
     if not part:
         raise HTTPException(status_code=404, detail="Part not found")
-    
+
     update_data = part_in.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(part, field, value)
-        
+
     db.add(part)
     await db.commit()
     await db.refresh(part)
@@ -69,7 +71,7 @@ async def create_part(
     # Check if exists by designation
     result = await db.execute(select(Part).filter(Part.designation == part_in.designation))
     existing = result.scalars().first()
-    
+
     if existing:
         # Update existing
         update_data = part_in.dict(exclude_unset=True)

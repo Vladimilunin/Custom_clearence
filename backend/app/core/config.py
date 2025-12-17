@@ -1,15 +1,15 @@
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
+import os
 
 from dotenv import load_dotenv
-import os
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
 # Explicitly load .env from the same directory
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
 
 class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", extra="ignore")
-    
+
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/tamozh_db"
     GEMINI_API_KEY: str | None = None
     OPENROUTER_API_KEY: str | None = None

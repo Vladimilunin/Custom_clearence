@@ -1,6 +1,7 @@
 import os
-from PIL import Image
 import uuid
+
+from PIL import Image
 
 # Define constants
 MAX_IMAGE_DIMENSION = 1024
@@ -20,14 +21,14 @@ def process_and_save_image(pil_image: Image.Image) -> str:
         ratio = min(MAX_IMAGE_DIMENSION / width, MAX_IMAGE_DIMENSION / height)
         new_size = (int(width * ratio), int(height * ratio))
         pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
-    
+
     # Generate filename
     filename = f"{uuid.uuid4()}.webp"
     filepath = os.path.join(IMAGES_DIR, filename)
-    
+
     # Save as WebP
     pil_image.save(filepath, "WEBP", quality=IMAGE_QUALITY)
-    
+
     return filename
 
 def get_image_path(filename: str) -> str:

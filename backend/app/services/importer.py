@@ -1,7 +1,10 @@
+import os
+
 import pandas as pd
 from sqlalchemy.orm import Session
+
 from app.db.models import Part
-import os
+
 
 def clean_float(value):
     if pd.isna(value):
@@ -46,7 +49,7 @@ def import_parts_from_excel(file_path: str, db: Session):
             if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
                 name_part = os.path.splitext(filename)[0]
                 ext = os.path.splitext(filename)[1].lower()
-                
+
                 # Exact match logic
                 # Prioritize WebP
                 current_val = image_map.get(name_part)
@@ -68,7 +71,7 @@ def import_parts_from_excel(file_path: str, db: Session):
                             image_map[des] = filename
                     else:
                         image_map[des] = filename
-                        
+
                 # Fuzzy match map (normalized -> filename)
                 norm_name = normalize_name(name_part)
                 if norm_name not in image_map: # Don't overwrite exact matches
@@ -90,7 +93,7 @@ def import_parts_from_excel(file_path: str, db: Session):
     # Find header row
     header_row_index = -1
     column_map = {}
-    
+
     # Common column names mapping to internal keys
     # Internal keys: 'Обозначение', 'Наименование', 'Материал', 'Масса', 'Размеры', 'Спецификация', 'Раздел'
     possible_headers = {
@@ -118,7 +121,7 @@ def import_parts_from_excel(file_path: str, db: Session):
     for i, row in df.iterrows():
         # Convert row to string values for checking
         row_values = [str(val).strip() for val in row.values]
-        
+
         # Check if this row contains enough known headers
         matches = 0
         temp_map = {}
@@ -126,13 +129,13 @@ def import_parts_from_excel(file_path: str, db: Session):
             if val in possible_headers:
                 matches += 1
                 temp_map[possible_headers[val]] = col_idx
-        
+
         if matches >= 2: # At least 2 columns match
             header_row_index = i
             column_map = temp_map
             print(f"Found header at row {i}: {column_map}")
             break
-    
+
     if header_row_index == -1:
         print("Could not find header row.")
         return
@@ -141,7 +144,7 @@ def import_parts_from_excel(file_path: str, db: Session):
     count = 0
     for index in range(header_row_index + 1, len(df)):
         row = df.iloc[index]
-        
+
         # Helper to get value by mapped column index
         def get_val(key):
             if key in column_map:
@@ -151,10 +154,10 @@ def import_parts_from_excel(file_path: str, db: Session):
         designation = get_val('Обозначение')
         if pd.isna(designation) or str(designation).strip() == '' or str(designation).lower() == 'nan':
             continue
-            
+
         # Normalize spaces (collapse multiple spaces)
         designation = " ".join(str(designation).strip().replace('\xa0', ' ').split())
-        
+
         # Split designation if it contains spaces (e.g. "R1.301 Пластина" -> "R1.301")
         # But keep the original for image lookup if needed
         original_designation = designation
@@ -167,16 +170,16 @@ def import_parts_from_excel(file_path: str, db: Session):
 
         if 'R1.301' in designation:
             print(f"Processing R1.301: {repr(designation)} (Original: {repr(original_designation)})")
-            
+
             if original_designation in image_map:
                 print(f"  Found full name in image_map: {image_map[original_designation]}")
             if designation in image_map:
                  print(f"  Found cleaned name in image_map: {image_map[designation]}")
-        
+
         try:
             # Check if exists
             existing = db.query(Part).filter(Part.designation == designation).first()
-            
+
             # If not found, try splitting by space (e.g. "R1.301 Name" -> "R1.301")
             if not existing and ' ' in designation:
                 clean_designation = designation.split(' ')[0]
@@ -184,27 +187,27 @@ def import_parts_from_excel(file_path: str, db: Session):
                 if existing:
                     print(f"Found existing part by cleaned designation: {designation} -> {clean_designation}")
                     designation = clean_designation
-            
+
             name = clean_str(get_val('Наименование'))
             material = clean_str(get_val('Материал'))
-            
+
             # Handle multiple possible column names for Weight
             weight = clean_float(get_val('Масса'))
-                
+
             # Handle multiple possible column names for Dimensions
             dimensions = clean_str(get_val('Размеры'))
-                
+
             description = clean_str(get_val('Спецификация'))
             section = clean_str(get_val('Раздел'))
-            
+
             # Find image
             image_filename = image_map.get(designation)
-            
+
             # If not exact match, try fuzzy match
             if not image_filename:
                 norm_des = normalize_name(designation)
                 image_filename = image_map.get(norm_des)
-            
+
             # Try splitting by space for image lookup (e.g. "R1.301 Name" -> "R1.301")
             if not image_filename and ' ' in designation:
                  clean_des = designation.split(' ')[0]
@@ -219,13 +222,13 @@ def import_parts_from_excel(file_path: str, db: Session):
                      if key.startswith(designation):
                          image_filename = val
                          break
-            
+
             if not image_filename:
                 print(f"Skipping {designation}: No image found.")
                 continue
 
             image_path = image_filename # Store just filename, we know the base dir
-            
+
             if existing:
                 # Update
                 existing.name = name
@@ -248,15 +251,15 @@ def import_parts_from_excel(file_path: str, db: Session):
                     image_path=image_path
                 )
                 db.add(part)
-            
+
             count += 1
             if count % 50 == 0:
                 db.commit()
-                
+
         except Exception as e:
             print(f"Error on row {index} (Designation: {designation}): {e}")
             db.rollback()
             continue
-    
+
     db.commit()
     print(f"Imported/Updated {count} parts.")

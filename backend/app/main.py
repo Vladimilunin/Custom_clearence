@@ -1,9 +1,11 @@
+import logging
+import sys
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+
 from app.services.s3 import s3_service
-import logging
-import sys
 
 # Configure logging
 logging.basicConfig(
@@ -18,7 +20,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from contextlib import asynccontextmanager
+
 from app.core.config import settings
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,8 +64,9 @@ try:
 except Exception as e:
     logger.error(f"❌ Error importing API router: {e}", exc_info=True)
 
-from fastapi.staticfiles import StaticFiles
 import os
+
+from fastapi.staticfiles import StaticFiles
 
 # Mount images directory
 # Prefer the clean mount point /app/images if it exists (Docker)
@@ -84,7 +89,7 @@ async def get_image(filename: str):
     file_stream = s3_service.get_file(filename)
     if file_stream:
         return StreamingResponse(file_stream, media_type="image/jpeg")
-    
+
     # Fallback to local if needed
     if os.path.exists(os.path.join(IMAGES_DIR, filename)):
         return FileResponse(os.path.join(IMAGES_DIR, filename))

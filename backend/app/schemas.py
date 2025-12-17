@@ -2,9 +2,9 @@
 Pydantic schemas for request/response validation.
 Centralized location for all API schemas.
 """
-from pydantic import BaseModel, Field, field_validator
 from typing import Any
 
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Invoice Schemas
@@ -12,10 +12,10 @@ from typing import Any
 
 class InvoiceItem(BaseModel):
     """Schema for a single invoice item."""
-    
+
     designation: str = Field(..., description="Part designation/code")
     raw_description: str | None = Field(None, description="Raw description from invoice")
-    
+
     # Fields from DB
     name: str | None = Field(None, description="Part name")
     material: str | None = Field(None, description="Material")
@@ -29,11 +29,11 @@ class InvoiceItem(BaseModel):
     manufacturer: str | None = Field(None, description="Manufacturer name")
     condition: str | None = Field(None, description="Condition (New, Refurbished, etc.)")
     quantity: int | str | None = Field(1, description="Quantity")
-    
+
     # Electronics fields
     component_type: str | None = Field(None, description="Component type: 'electronics' or 'mechanical'")
     specs: dict[str, Any] | None = Field(None, description="Flexible specifications JSON")
-    
+
     # Legacy fields (kept for backward compatibility)
     current_type: str | None = None
     input_voltage: str | None = None
@@ -43,7 +43,7 @@ class InvoiceItem(BaseModel):
     rom_mb: int | None = None
     tnved_code: str | None = None
     tnved_description: str | None = None
-    
+
     @field_validator('designation')
     @classmethod
     def designation_not_empty(cls, v: str) -> str:
@@ -54,7 +54,7 @@ class InvoiceItem(BaseModel):
 
 class InvoiceUploadResponse(BaseModel):
     """Response schema for invoice upload."""
-    
+
     items: list[InvoiceItem]
     debug_info: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
@@ -62,11 +62,11 @@ class InvoiceUploadResponse(BaseModel):
 
 class DebugUploadRequest(BaseModel):
     """Request schema for debug upload endpoint."""
-    
+
     file_path: str = Field(..., description="Path to PDF file on server")
     method: str = Field("groq", description="Parsing method")
     api_key: str | None = Field(None, description="Optional API key override")
-    
+
     @field_validator('file_path')
     @classmethod
     def validate_file_path(cls, v: str) -> str:
@@ -81,7 +81,7 @@ class DebugUploadRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     """Request schema for document generation."""
-    
+
     items: list[InvoiceItem]
     country_of_origin: str | None = Field("Китай", description="Country of origin")
     contract_no: str | None = Field(None, description="Contract number")
@@ -105,7 +105,7 @@ class GenerateRequest(BaseModel):
 
 class PartBase(BaseModel):
     """Base schema for Part with common fields."""
-    
+
     name: str | None = None
     material: str | None = None
     weight: float | None = Field(None, ge=0)
@@ -117,9 +117,9 @@ class PartBase(BaseModel):
 
 class PartCreate(PartBase):
     """Schema for creating a new part."""
-    
+
     designation: str = Field(..., min_length=1, description="Unique part designation")
-    
+
     @field_validator('designation')
     @classmethod
     def designation_not_empty(cls, v: str) -> str:
@@ -135,10 +135,10 @@ class PartUpdate(PartBase):
 
 class PartSchema(PartBase):
     """Schema for Part response with ID."""
-    
+
     id: int
     designation: str
-    
+
     class Config:
         from_attributes = True
 
@@ -149,7 +149,7 @@ class PartSchema(PartBase):
 
 class ErrorResponse(BaseModel):
     """Standard error response schema."""
-    
+
     detail: str
     error_type: str | None = None
     field: str | None = None
@@ -157,6 +157,6 @@ class ErrorResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response."""
-    
+
     status: str = "ok"
     version: str = "1.0.0"

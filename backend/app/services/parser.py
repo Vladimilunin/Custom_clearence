@@ -2,14 +2,14 @@
 Invoice PDF Parser - Groq Multi-Key Implementation
 Parses PDF invoices using Groq AI with key rotation and model fallback.
 """
+import json
+import os
+import re
+from datetime import datetime
+from typing import Dict, List, Tuple
+
 import pypdfium2 as pdfium
 from PIL import Image
-import io
-import os
-import json
-import re
-from typing import List, Dict, Tuple
-from datetime import datetime
 
 from app.core.config import settings
 
@@ -25,12 +25,12 @@ def normalize_date(date_str: str) -> str:
     """
     if not date_str:
         return ""
-        
+
     date_str = date_str.strip()
-    
+
     # Pre-processing: remove "th", "st", "nd", "rd" suffixes after digits
     clean_str = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', date_str)
-    
+
     formats = [
         "%Y-%m-%d",       # 2025-10-24
         "%d.%m.%Y",       # 24.10.2025
@@ -45,14 +45,14 @@ def normalize_date(date_str: str) -> str:
         "%d %b %Y",       # 23 Oct 2025
         "%d %B %Y",       # 23 October 2025
     ]
-    
+
     for fmt in formats:
         try:
             dt = datetime.strptime(clean_str, fmt)
             return dt.strftime("%d.%m.%Y")
         except ValueError:
             continue
-            
+
     return date_str  # Return original if parsing fails
 
 
@@ -68,14 +68,14 @@ def parse_invoice(pdf_path: str, method: str = "groq", api_key: str = None) -> T
     Returns:
         Tuple of (items list, debug info dict)
     """
-    import requests
     import base64
     from io import BytesIO
-    import time
+
+    import requests
 
     items = []
     print(f"Parsing PDF: {pdf_path} with method={method}")
-    
+
     debug_info = {
         "method_used": "Groq Multi-Key",
         "token_usage": None,
@@ -140,11 +140,11 @@ def parse_invoice(pdf_path: str, method: str = "groq", api_key: str = None) -> T
         base64_images.append(img_str)
 
     print(f"DEBUG: Prepared {len(base64_images)} images for Groq.")
-    
+
     all_items = []
     invoice_metadata = {}
     key_attempts_log = []
-    
+
     page_prompt = """Extract all line items from this invoice page. Return a valid JSON object with this structure:
 {
   "items": [
@@ -173,26 +173,26 @@ IMPORTANT:
 
     for i, b64_img in enumerate(base64_images):
         page_success = False
-        
+
         # Try models
         for model_slug in GROQ_MODELS:
             if page_success:
                 break
-            
+
             print(f"--- Page {i+1}: Trying model {model_slug} ---")
-            
+
             # Try keys
             for key_idx, current_api_key in enumerate(GROQ_API_KEYS):
                 if page_success:
                     break
-                
+
                 print(f"--- Page {i+1}: Trying Key {key_idx+1}/{len(GROQ_API_KEYS)} ({current_api_key[-4:]}) ---")
-                
+
                 headers = {
                     "Authorization": f"Bearer {current_api_key}",
                     "Content-Type": "application/json"
                 }
-                
+
                 content_payload = [
                     {"type": "text", "text": page_prompt},
                     {
@@ -206,7 +206,7 @@ IMPORTANT:
                     "messages": [{"role": "user", "content": content_payload}],
                     "temperature": 0.1
                 }
-                
+
                 try:
                     response = requests.post(
                         "https://api.groq.com/openai/v1/chat/completions",
@@ -214,26 +214,26 @@ IMPORTANT:
                         data=json.dumps(payload),
                         timeout=60
                     )
-                    
+
                     if response.status_code == 200:
                         resp_json = response.json()
                         content_str = resp_json['choices'][0]['message']['content']
-                        
+
                         # Clean JSON
                         if "```json" in content_str:
                             content_str = content_str.split("```json")[1].split("```")[0]
                         elif "```" in content_str:
                             content_str = content_str.split("```")[1].split("```")[0]
-                        
+
                         print(f"DEBUG: Raw JSON from Groq (Page {i+1}): {content_str[:100]}...")
-                        
+
                         data = json.loads(content_str)
-                        
+
                         # Aggregate items
                         page_items = data.get("items", [])
                         if isinstance(page_items, list):
                             all_items.extend(page_items)
-                        
+
                         # Aggregate metadata (only from first page)
                         if i == 0:
                             invoice_metadata["invoice_number"] = data.get("invoice_number")
@@ -241,7 +241,7 @@ IMPORTANT:
                             invoice_metadata["contract_number"] = data.get("contract_number")
                             invoice_metadata["contract_date"] = normalize_date(data.get("contract_date"))
                             invoice_metadata["supplier"] = data.get("supplier")
-                        
+
                         page_success = True
                         key_attempts_log.append({
                             "page": i+1,
@@ -251,12 +251,12 @@ IMPORTANT:
                             "tokens": resp_json.get('usage', {}).get('total_tokens', 0)
                         })
                         print(f"✅ Page {i+1} Success with Key {key_idx+1}")
-                        
+
                     else:
                         error_msg = response.text
                         status_code = response.status_code
                         print(f"❌ Page {i+1} Failed with Key {key_idx+1}: {status_code} - {error_msg[:100]}")
-                        
+
                         key_attempts_log.append({
                             "page": i+1,
                             "status": "failed",
@@ -264,13 +264,13 @@ IMPORTANT:
                             "model": model_slug,
                             "error": f"{status_code}: {error_msg[:50]}"
                         })
-                        
+
                         # Retry only on specific errors
                         if status_code in [401, 429, 500, 503]:
                             continue  # Try next key
                         else:
                             break  # Try next model
-                            
+
                 except Exception as e:
                     print(f"❌ Page {i+1} Exception with Key {key_idx+1}: {e}")
                     key_attempts_log.append({
@@ -281,7 +281,7 @@ IMPORTANT:
                         "error": str(e)[:50]
                     })
                     continue  # Try next key
-        
+
         if not page_success:
             print(f"💀 Page {i+1} failed with ALL keys and ALL models.")
             debug_info["error"] = f"Page {i+1} failed after trying all keys/models."
@@ -299,10 +299,10 @@ IMPORTANT:
             "description": "",
             "parsing_method": "Groq Multi-Key"
         })
-    
+
     # Calculate total token usage
     total_tokens = sum(attempt.get("tokens", 0) for attempt in key_attempts_log if attempt.get("status") == "success")
-    
+
     debug_info["invoice_metadata"] = invoice_metadata
     debug_info["key_attempts"] = key_attempts_log
     debug_info["token_usage"] = {
@@ -314,28 +314,28 @@ IMPORTANT:
 
     # Image standardization logic
     from app.services.image_processor import process_and_save_image
-    
+
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     IMAGES_DIR = os.path.join(BASE_DIR, "images")
-    
+
     if os.path.exists(IMAGES_DIR):
         print(f"Scanning for images in {IMAGES_DIR}...")
         image_files = os.listdir(IMAGES_DIR)
-        
+
         for item in items:
             designation = item.get("designation")
             if not designation:
                 continue
-            
+
             found_image = None
-            
+
             # Try exact match with common extensions
             for ext in ['.jpg', '.jpeg', '.png', '.webp']:
                 candidate_name = f"{designation}{ext}"
                 if candidate_name in image_files:
                     found_image = candidate_name
                     break
-            
+
             if not found_image:
                 # Try match without suffix (e.g. R1.01.00.001a -> R1.01.00.001.jpg)
                 if designation[-1].isalpha():
@@ -345,14 +345,14 @@ IMPORTANT:
                         if candidate_name in image_files:
                             found_image = candidate_name
                             break
-            
+
             if not found_image:
                 # Try to find any file that STARTS with the designation
                 for img_file in image_files:
                     if img_file.startswith(designation) and img_file.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
                         found_image = img_file
                         break
-            
+
             if found_image:
                 try:
                     full_path = os.path.join(IMAGES_DIR, found_image)

@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, Text
+from sqlalchemy import Column, Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
+
 from app.db.base import Base
+
 
 class Part(Base):
     __tablename__ = "parts"
@@ -18,11 +20,11 @@ class Part(Base):
     image_path = Column(String, nullable=True) # Path to the image file
     manufacturer = Column(String, nullable=True) # Производитель
     condition = Column(String, nullable=True) # Состояние (New, Refurbished, etc)
-    
+
     # Поля для электроники
     component_type = Column(String, nullable=True)  # 'electronics' или 'mechanical'
     specs = Column(JSONB, nullable=True)  # Гибкие характеристики: {"Род тока": "...", "Момент": "..."}
-    
+
     # Deprecated/Legacy fields (kept for backward compatibility or migration)
     current_type = Column(String, nullable=True)
     input_voltage = Column(String, nullable=True)

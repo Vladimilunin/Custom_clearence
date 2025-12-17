@@ -1,25 +1,25 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
-from fastapi.responses import FileResponse
-from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from app.db.session import get_db
-from app.db.models import Part
-from app.services.parser import parse_invoice
-from app.services.generator import generate_technical_description
-from app.schemas import (
-    InvoiceItem,
-    InvoiceUploadResponse,
-    DebugUploadRequest,
-    GenerateRequest,
-)
-from app.exceptions import FileValidationError, PathTraversalError
-from app.utils.validation import validate_pdf_file, validate_file_path, sanitize_filename
-import shutil
+import logging
 import os
 import tempfile
-from typing import List, Any, Dict
-import logging
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from app.db.models import Part
+from app.db.session import get_db
+from app.exceptions import FileValidationError, PathTraversalError
+from app.schemas import (
+    DebugUploadRequest,
+    GenerateRequest,
+    InvoiceItem,
+    InvoiceUploadResponse,
+)
+from app.services.generator import generate_technical_description
+from app.services.parser import parse_invoice
+from app.utils.validation import sanitize_filename, validate_file_path, validate_pdf_file
 
 logger = logging.getLogger(__name__)
 
@@ -38,29 +38,29 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
     temp_dir = os.path.join(os.getcwd(), "temp")
     os.makedirs(temp_dir, exist_ok=True)
     temp_path = os.path.join(temp_dir, filename)
-    
+
     with open(temp_path, "wb") as f:
         f.write(contents)
-        
+
     try:
         # Parse invoice
         parsed_items, debug_info = await run_in_threadpool(parse_invoice, pdf_path=temp_path, method=method, api_key=api_key)
         logger.debug(f"Parsed {len(parsed_items)} items from invoice")
-        
+
         # Match with DB
         results = []
-        
+
         # Prefetch all parts for fuzzy matching later
         all_parts_result = await db.execute(select(Part))
         all_parts = all_parts_result.scalars().all()
-        
+
         for item in parsed_items:
             designation = item['designation']
-            
+
             # Async query for exact match
             part_result = await db.execute(select(Part).filter(Part.designation == designation))
             part = part_result.scalars().first()
-            
+
             res_item = InvoiceItem(
                 designation=designation,
                 raw_description=item['raw_description'],
@@ -69,11 +69,11 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                 manufacturer=item.get('manufacturer'),
                 condition=item.get('condition')
             )
-            
+
             # Prioritize invoice material if found
             if item.get('material'):
                 res_item.material = item['material']
-            
+
             if part:
                 res_item.found_in_db = True
                 res_item.name = part.name
@@ -85,7 +85,7 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                 res_item.dimensions = part.dimensions
                 res_item.description = part.description
                 res_item.image_path = part.image_path
-                
+
                 res_item.condition = part.condition
                 # Electronics fields
                 res_item.component_type = getattr(part, 'component_type', None)
@@ -102,7 +102,7 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                 if is_electronics and part.manufacturer:
                     logger.debug(f"Overwriting manufacturer for {designation} to {part.manufacturer}")
                     res_item.manufacturer = part.manufacturer
-                
+
                 # Legacy fields
                 res_item.current_type = getattr(part, 'current_type', None)
                 res_item.input_voltage = getattr(part, 'input_voltage', None)
@@ -121,7 +121,7 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                     # Async query for base part
                     base_part_result = await db.execute(select(Part).filter(Part.designation == base_des))
                     base_part = base_part_result.scalars().first()
-                
+
                 if base_part:
                     res_item.found_in_db = True
                     res_item.name = base_part.name
@@ -146,7 +146,7 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                     res_item.rom_mb = getattr(base_part, 'rom_mb', None)
                     res_item.tnved_code = getattr(base_part, 'tnved_code', None)
                     res_item.tnved_description = getattr(base_part, 'tnved_description', None)
-                    
+
                     if not res_item.description:
                         res_item.description = ""
                     res_item.description += f" [Base Match: {base_part.designation}]"
@@ -155,12 +155,12 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                     import difflib
                     # Use pre-fetched all_parts
                     all_designations = [p.designation for p in all_parts]
-                    
+
                     matches = difflib.get_close_matches(designation, all_designations, n=1, cutoff=0.8)
                     if matches:
                         fuzzy_des = matches[0]
                         fuzzy_part = next(p for p in all_parts if p.designation == fuzzy_des)
-                        
+
                         res_item.found_in_db = True
                         res_item.name = fuzzy_part.name
                         if not res_item.material:
@@ -184,16 +184,16 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                         res_item.rom_mb = getattr(fuzzy_part, 'rom_mb', None)
                         res_item.tnved_code = getattr(fuzzy_part, 'tnved_code', None)
                         res_item.tnved_description = getattr(fuzzy_part, 'tnved_description', None)
-                        
+
                         if not res_item.description:
                             res_item.description = ""
                         res_item.description += f" [Fuzzy Match: {fuzzy_des}]"
-            
+
             results.append(res_item)
-            
+
         # Extract metadata from debug_info if available
         invoice_metadata = debug_info.get("invoice_metadata") if debug_info else None
-        
+
         # Failsafe Deduplication of results
         unique_results = []
         seen_designations = set()
@@ -204,13 +204,13 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
         results = unique_results
 
         return InvoiceUploadResponse(items=results, debug_info=debug_info, metadata=invoice_metadata)
-        
+
     except Exception as e:
         import traceback
         error_msg = traceback.format_exc()
         logger.error(f"ERROR in process_invoice_contents: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-        
+
     finally:
         if os.path.exists(temp_path):
             try:
@@ -233,20 +233,20 @@ async def upload_invoice(
         HTTPException 500: Processing error
     """
     logger.info(f"Received file upload: {file.filename}, method={method}")
-    
+
     # Read file contents
     contents = await file.read()
-    
+
     # Validate PDF file
     try:
         validate_pdf_file(contents, file.filename)
     except FileValidationError as e:
         logger.warning(f"PDF validation failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
-    
+
     # Sanitize filename
     safe_filename = sanitize_filename(file.filename)
-    
+
     return await process_invoice_contents(contents, safe_filename, method, api_key, db)
 
 @router.post("/debug_upload", response_model=InvoiceUploadResponse)
@@ -268,24 +268,24 @@ async def debug_upload_invoice(
     # Validate path to prevent path traversal attacks
     try:
         validated_path = validate_file_path(request.file_path, ALLOWED_DEBUG_DIRECTORIES)
-    except PathTraversalError as e:
+    except PathTraversalError:
         logger.warning(f"Path traversal attempt blocked: {request.file_path}")
         raise HTTPException(status_code=400, detail="Invalid file path: path traversal not allowed")
-    
+
     if not os.path.exists(validated_path):
         raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
-    
+
     try:
         with open(validated_path, "rb") as f:
             contents = f.read()
-        
+
         # Validate PDF file
         filename = os.path.basename(validated_path)
         try:
             validate_pdf_file(contents, filename)
         except FileValidationError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        
+
         safe_filename = sanitize_filename(filename)
         return await process_invoice_contents(contents, safe_filename, request.method, request.api_key, db)
     except HTTPException:
@@ -304,18 +304,18 @@ async def generate_report(
     Generate DOCX report(s) from validated items.
     Returns a single DOCX or a ZIP file if multiple documents are requested.
     """
-    from app.services.generator import (
-        generate_technical_description, 
-        generate_non_insurance_letter, 
-        generate_decision_130_notification
-    )
     import zipfile
+
+    from app.services.generator import (
+        generate_decision_130_notification,
+        generate_non_insurance_letter,
+    )
 
     # Convert request items back to Part-like objects
     class SimplePart:
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
-            
+
     parts_to_gen = []
     for item in request.items:
         parts_to_gen.append(SimplePart(
@@ -342,15 +342,15 @@ async def generate_report(
             tnved_code=item.tnved_code,
             tnved_description=item.tnved_description
         ))
-        
+
     generated_files = []
-    
+
     # 1. Technical Description
     if request.gen_tech_desc:
         tmp_tech = tempfile.NamedTemporaryFile(delete=False, suffix=".docx").name
         await run_in_threadpool(
             generate_technical_description,
-            parts_to_gen, 
+            parts_to_gen,
             tmp_tech,
             country_of_origin=request.country_of_origin,
             contract_no=request.contract_no,
@@ -397,20 +397,20 @@ async def generate_report(
     # If single file, return it directly
     if len(generated_files) == 1:
         return FileResponse(
-            generated_files[0]["path"], 
-            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
+            generated_files[0]["path"],
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             filename=generated_files[0]["name"],
             headers={"Content-Disposition": f'attachment; filename="{generated_files[0]["name"]}"'}
         )
-    
+
     # If multiple files, zip them
     zip_filename = "Documents_Package.zip"
     tmp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip").name
-    
+
     with zipfile.ZipFile(tmp_zip, 'w') as zf:
         for f in generated_files:
             zf.write(f["path"], arcname=f["name"])
-            
+
     return FileResponse(
         tmp_zip,
         media_type='application/zip',

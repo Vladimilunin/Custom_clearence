@@ -6,23 +6,22 @@ This module provides functions to generate:
 - Non-insurance letters  
 - Decision 130 notifications
 """
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 import os
 from datetime import datetime
 
-from app.db.models import Part
-from app.services.parser import normalize_date
-from app.services.s3 import s3_service
+from docx import Document
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Cm, Pt, RGBColor
+
 from app.services.document_builder import (
     FontHelper,
     TableHelper,
-    ImageHelper,
-    PageNumberHelper,
-    PartInfo,
 )
+from app.services.parser import normalize_date
+from app.services.s3 import s3_service
 
 # Backwards compatibility aliases
 set_font = FontHelper.set_font
@@ -31,7 +30,7 @@ remove_table_borders = TableHelper.remove_borders
 def create_header(document):
     section = document.sections[0]
     header = section.header
-    
+
     # Clear existing content
     for paragraph in header.paragraphs:
         p = paragraph._element
@@ -43,18 +42,17 @@ def create_header(document):
     table = header.add_table(rows=2, cols=3, width=Cm(16.5))
     table.autofit = False
     remove_table_borders(table)
-    
+
     # Columns: 40%, 30%, 30% of 16.5cm
     # 16.5 * 0.4 = 6.6
     # 16.5 * 0.3 = 4.95
     table.columns[0].width = Cm(6.6)
     table.columns[1].width = Cm(4.95)
     table.columns[2].width = Cm(4.95)
-    
+
     # Set cell padding to 1pt (approx 0.035cm)
     from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    
+
     for row in table.rows:
         for cell in row.cells:
             tcPr = cell._tc.get_or_add_tcPr()
@@ -65,16 +63,16 @@ def create_header(document):
                 node.set(qn('w:type'), 'dxa')
                 tcMar.append(node)
             tcPr.append(tcMar)
-    
+
     # Merge cells
     # Logo: Cell(0,0) + Cell(1,0) - Vertical merge
     cell_logo = table.cell(0, 0)
     cell_logo.merge(table.cell(1, 0))
-    
+
     # Company Name: Cell(0,1) + Cell(0,2) - Horizontal merge
     cell_name = table.cell(0, 1)
     cell_name.merge(table.cell(0, 2))
-    
+
     # Insert Logo
     logo_path = "/app/logo.png"
     if not os.path.exists(logo_path):
@@ -85,16 +83,16 @@ def create_header(document):
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = paragraph.add_run()
         # Width 5.5cm fits in 6.6cm column
-        run.add_picture(logo_path, width=Cm(5.5)) 
+        run.add_picture(logo_path, width=Cm(5.5))
         paragraph.paragraph_format.space_before = Pt(5)
         paragraph.paragraph_format.space_after = Pt(5)
-    
+
     # Company Name
     paragraph = cell_name.paragraphs[0]
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = paragraph.add_run('ООО "БСЛ-Лаб"')
     set_font(run, font_name='Calibri', font_size=14, bold=True)
-    
+
     # Address (Row 2, Col 2)
     cell_addr = table.cell(1, 1)
     p_addr = cell_addr.paragraphs[0]
@@ -104,7 +102,7 @@ def create_header(document):
     p_addr.alignment = WD_ALIGN_PARAGRAPH.LEFT
     p_addr.paragraph_format.space_before = Pt(0)
     p_addr.paragraph_format.space_after = Pt(0)
-    
+
     # Contacts (Row 2, Col 3)
     cell_contacts = table.cell(1, 2)
     p_contacts = cell_contacts.paragraphs[0]
@@ -122,19 +120,18 @@ def create_footer(document):
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     # Add page number
     run = paragraph.add_run()
-    
+
     from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    
+
     fldChar1 = OxmlElement('w:fldChar')
     fldChar1.set(qn('w:fldCharType'), 'begin')
     run._r.append(fldChar1)
-    
+
     instrText = OxmlElement('w:instrText')
     instrText.set(qn('xml:space'), 'preserve')
     instrText.text = "PAGE"
     run._r.append(instrText)
-    
+
     fldChar2 = OxmlElement('w:fldChar')
     fldChar2.set(qn('w:fldCharType'), 'end')
     run._r.append(fldChar2)
@@ -143,17 +140,17 @@ def create_outgoing_info(document, doc_number="80", doc_date=None, recipient="В
     if doc_date is None:
         doc_date = datetime.now().strftime("%d.%m.%Y")
     # REMOVED empty paragraphs as requested
-    
+
     # Table for "Исх.№" and Recipient
     # Width 17.0cm
     table = document.add_table(rows=1, cols=2)
     table.autofit = False
     remove_table_borders(table)
-    
+
     # 17.0cm total
     table.columns[0].width = Cm(11.0)
     table.columns[1].width = Cm(6.0)
-    
+
     # Outgoing Info
     cell_left = table.cell(0, 0)
     p_left = cell_left.paragraphs[0]
@@ -161,7 +158,7 @@ def create_outgoing_info(document, doc_number="80", doc_date=None, recipient="В
     run.font.underline = True
     set_font(run, font_size=12)
     p_left.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    
+
     # Recipient
     cell_right = table.cell(0, 1)
     p_right = cell_right.paragraphs[0]
@@ -173,6 +170,7 @@ def create_outgoing_info(document, doc_number="80", doc_date=None, recipient="В
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+
 def add_float_picture(run, image_path, width, pos_x, pos_y):
     """
     Insert a floating image (In Front of Text) anchored to the paragraph.
@@ -180,10 +178,10 @@ def add_float_picture(run, image_path, width, pos_x, pos_y):
     """
     # Add the picture normally first to get the relationship ID
     inline = run.add_picture(image_path, width=width)._inline
-    
+
     # Get the graphic object
     graphic = inline.graphic
-    
+
     # Create the anchor element
     anchor = OxmlElement('wp:anchor')
     anchor.set('distT', "0")
@@ -196,13 +194,13 @@ def add_float_picture(run, image_path, width, pos_x, pos_y):
     anchor.set('locked', "0")
     anchor.set('layoutInCell', "1")
     anchor.set('allowOverlap', "1")
-    
+
     # Simple Positioning (coordinates)
     simplePos = OxmlElement('wp:simplePos')
     simplePos.set('x', "0")
     simplePos.set('y', "0")
     anchor.append(simplePos)
-    
+
     # Horizontal Position (Relative to Column or Page? Let's use Column/Margin)
     # To match the user's request "In Front of Text" and "Positioned", we use absolute positioning relative to Column
     positionH = OxmlElement('wp:positionH')
@@ -211,7 +209,7 @@ def add_float_picture(run, image_path, width, pos_x, pos_y):
     posOffsetH.text = str(pos_x)
     positionH.append(posOffsetH)
     anchor.append(positionH)
-    
+
     # Vertical Position (Relative to Paragraph)
     positionV = OxmlElement('wp:positionV')
     positionV.set('relativeFrom', "paragraph")
@@ -219,26 +217,26 @@ def add_float_picture(run, image_path, width, pos_x, pos_y):
     posOffsetV.text = str(pos_y)
     positionV.append(posOffsetV)
     anchor.append(positionV)
-    
+
     # Extent (Size)
     extent = OxmlElement('wp:extent')
     extent.set('cx', str(inline.extent.cx))
     extent.set('cy', str(inline.extent.cy))
     anchor.append(extent)
-    
+
     # Wrap None (In Front of Text behavior)
     wrapNone = OxmlElement('wp:wrapNone')
     anchor.append(wrapNone)
-    
+
     # DocPr
     docPr = OxmlElement('wp:docPr')
     docPr.set('id', '666') # Unique ID
     docPr.set('name', 'Floating Image')
     anchor.append(docPr)
-    
+
     # Graphic
     anchor.append(graphic)
-    
+
     # Replace inline with anchor
     inline.getparent().replace(inline, anchor)
     return anchor
@@ -247,24 +245,24 @@ def create_signature(document, add_facsimile=False):
     # VBA: 2 empty paragraphs before
     document.add_paragraph()
     document.add_paragraph()
-    
+
     # VBA: Table 3 rows, 4 columns.
     table = document.add_table(rows=3, cols=4)
     table.autofit = False
-    
-    # Custom widths: 
+
+    # Custom widths:
     # Col 0 (Director): 4.0cm
     # Col 1 (Stamp): 8.0cm (Much Wider)
     # Col 2 (Name): 4.0cm
     # Col 3 (Rest): 1.0cm (Narrower)
-    
+
     table.columns[0].width = Cm(4.0)
     table.columns[1].width = Cm(8.0)
     table.columns[2].width = Cm(4.0)
     table.columns[3].width = Cm(1.0)
-        
+
     # Set minimal padding
-    
+
     # Row 0-1, Col 0: Director (Merged)
     cell_title = table.cell(0, 0)
     cell_title.merge(table.cell(1, 0))
@@ -275,9 +273,9 @@ def create_signature(document, add_facsimile=False):
     p_title.paragraph_format.space_after = Pt(0)
     cell_title.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
     set_font(p_title.runs[0], font_size=12)
-    
+
     # Row 0-1, Col 2: Name (Merged)
-    cell_name = table.cell(0, 2) 
+    cell_name = table.cell(0, 2)
     cell_name.merge(table.cell(1, 2))
     p_name = cell_name.paragraphs[0]
     p_name.text = "А.В. Семенов"
@@ -286,13 +284,13 @@ def create_signature(document, add_facsimile=False):
     p_name.paragraph_format.space_after = Pt(0)
     cell_name.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
     set_font(p_name.runs[0], font_size=12)
-    
+
     if add_facsimile:
         # Paths
         signature_path = "/app/signature.png"
         if not os.path.exists(signature_path):
             signature_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "signature.png")
-            
+
         stamp_path = "/app/stamp.png"
         if not os.path.exists(stamp_path):
             stamp_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "stamp.png")
@@ -300,23 +298,23 @@ def create_signature(document, add_facsimile=False):
         # Check what we have
         has_stamp = os.path.exists(stamp_path)
         has_sig = os.path.exists(signature_path)
-        
+
         # We will anchor images to the middle cell (Row 0, Col 1)
         # We merge Row 0 and 1 of Col 1 just to have a clean anchor point
         cell_anchor = table.cell(0, 1)
         cell_anchor.merge(table.cell(1, 1))
         p_anchor = cell_anchor.paragraphs[0]
         run = p_anchor.add_run()
-        
+
         # Offsets in EMUs (1 cm = 360000 EMUs)
         # Col Width = 8.0cm = 2880000 EMUs
-        
+
         if has_stamp:
             # Stamp: 100% scale (width=None)
             # Restore X: -324000 (Undo "Left 2cm")
             # Move DOWN: -360000 -> 0
-            add_float_picture(run, stamp_path, width=None, pos_x=-324000, pos_y=0) 
-            
+            add_float_picture(run, stamp_path, width=None, pos_x=-324000, pos_y=0)
+
         if has_sig:
             # Signature: 100% scale (width=None)
             # Restore Y: 0 (Undo "Down 1cm")
@@ -347,22 +345,22 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
 
     if not using_template:
         create_header(document)
-    
+
     create_footer(document)
 
     # Spacing from top header (2 lines)
     document.add_paragraph()
     document.add_paragraph()
 
-    # Technical Description usually doesn't have the "Outgoing No" line in the same way, 
+    # Technical Description usually doesn't have the "Outgoing No" line in the same way,
     # but user said "on the first page of EACH document". So I will add it.
-    # But wait, Technical Description is an attachment usually. 
+    # But wait, Technical Description is an attachment usually.
     # However, I will follow the instruction "row with date and number... on first page of each document".
     create_outgoing_info(document)
 
     # Spacing
     document.add_paragraph()
-    
+
     # Title
     h1 = document.add_paragraph()
     h1.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -371,7 +369,7 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
     run.font.size = Pt(14)
     run.font.color.rgb = RGBColor(0, 0, 0)
     run.font.bold = True
-    
+
     # Subtitle / Description
     p_desc = document.add_paragraph()
     p_desc.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -384,7 +382,7 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
     run.font.name = 'Times New Roman'
     run.font.size = Pt(12)
     run.font.bold = True
-    
+
     # Contract Info (if needed, but usually this replaces it or goes below)
     # Based on image, it looks like this text IS the header/title block.
     # The original code had "Contract Info" below. I will keep it but maybe add spacing.
@@ -403,9 +401,8 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
     else:
         BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         IMAGES_DIR = os.path.join(BASE_DIR, "_изображения")
-    
+
     from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
 
     def set_row_cant_split(row):
         tr = row._tr
@@ -419,15 +416,14 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
         set_font(p_head.runs[0], bold=True)
         p_head.paragraph_format.space_before = Pt(2)
         p_head.paragraph_format.space_after = Pt(2)
-        p_head.paragraph_format.keep_with_next = True 
-        
+        p_head.paragraph_format.keep_with_next = True
+
         table = document.add_table(rows=0, cols=2)
         # table.style = 'Table Grid' # Removed to avoid KeyError
-        
+
         # Add borders manually
         from docx.oxml.shared import OxmlElement
-        from docx.oxml.ns import qn
-        
+
         tbl = table._tbl
         tblPr = tbl.tblPr
         tblBorders = OxmlElement('w:tblBorders')
@@ -442,11 +438,11 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
         table.autofit = False
         table.columns[0].width = Cm(6.0)
         table.columns[1].width = Cm(11.0)
-            
+
         def add_row(label, value, keep_next=True):
             row = table.add_row()
             set_row_cant_split(row)
-            
+
             cell_label = row.cells[0]
             cell_label.text = label
             cell_label.width = Cm(6.0)
@@ -459,7 +455,7 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                     paragraph.paragraph_format.keep_with_next = True
                 for run in paragraph.runs:
                     set_font(run, bold=True)
-            
+
             cell_value = row.cells[1]
             cell_value.text = str(value) if value else ""
             cell_value.width = Cm(11.0)
@@ -492,7 +488,7 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
         if is_electronics:
             # Формат для электроники с разделом "Характеристики"
             add_row("Характеристики", "")  # Заголовок раздела
-            
+
             if hasattr(part, 'specs') and part.specs:
                 # Render specs from JSON (flexible format)
                 for key, value in part.specs.items():
@@ -511,10 +507,10 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                     add_row("Оперативная память, Кб", str(part.ram_kb))
                 if hasattr(part, 'rom_mb') and part.rom_mb:
                     add_row("Постоянная память, МБ", str(part.rom_mb))
-            
+
             add_row("Материал изготовления", part.material)
             add_row("Размеры (мм)", part.dimensions)
-            
+
             # Масса с единицей измерения
             if hasattr(part, 'weight') and part.weight:
                 weight_unit = getattr(part, 'weight_unit', 'кг') or 'кг'
@@ -527,25 +523,25 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                 add_row("Состояние", part.condition)
             if hasattr(part, 'description') and part.description:
                 add_row("Технические характеристики", part.description)
-            
+
         row_image = table.add_row()
         set_row_cant_split(row_image)
-        
+
         cell_image = row_image.cells[0].merge(row_image.cells[1])
         cell_image.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        
+
         p_img_label = cell_image.paragraphs[0]
         p_img_label.text = f"Фото (эскиз) {idx}. {part.name or ''} {part.designation}"
         p_img_label.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_img_label.paragraph_format.space_after = Pt(6)
-        p_img_label.paragraph_format.keep_with_next = False 
-        
+        p_img_label.paragraph_format.keep_with_next = False
+
         for run in p_img_label.runs:
             set_font(run, bold=True)
-        
+
         if hasattr(part, 'image_path') and part.image_path:
             image_full_path = os.path.join(IMAGES_DIR, part.image_path)
-            
+
             image_stream = None
             if os.path.exists(image_full_path):
                 image_stream = open(image_full_path, 'rb')
@@ -558,8 +554,9 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
             if image_stream:
                 try:
                     import io
+
                     from PIL import Image
-                    
+
                     # Read into memory to avoid issues with stream handling in PIL
                     img_data = image_stream.read()
                     if hasattr(image_stream, 'close'):
@@ -569,14 +566,14 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                         img_byte_arr = io.BytesIO()
                         img.save(img_byte_arr, format='PNG')
                         img_byte_arr.seek(0)
-                        
+
                         max_width_cm = 14.0
                         max_height_cm = 9.0
                         width, height = img.size
                         aspect_ratio = width / height
                         new_width = max_width_cm
                         new_height = new_width / aspect_ratio
-                        
+
                         if new_height > max_height_cm:
                             new_height = max_height_cm
                             new_width = new_height * aspect_ratio
@@ -584,14 +581,14 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                         run_img = p_img_label.add_run()
                         run_img.add_break()
                         run_img.add_picture(img_byte_arr, width=Cm(new_width), height=Cm(new_height))
-                        
+
                 except Exception as e:
                     p_img_label.add_run(f"\n[Error loading image: {e}]")
             else:
                 p_img_label.add_run("\n[Image file not found]")
         else:
             p_img_label.add_run("\n[No image available]")
-        
+
         # Добавляем ТН ВЭД код для электроники (после фото)
         if is_electronics and hasattr(part, 'tnved_code') and part.tnved_code:
             tnved_text = f"\n\n{part.tnved_code}"
@@ -599,9 +596,9 @@ def generate_technical_description(items: list, output_path: str, country_of_ori
                 tnved_text += f" - {part.tnved_description}"
             run_tnved = p_img_label.add_run(tnved_text)
             set_font(run_tnved, bold=True, font_size=10)
-            
+
     create_signature(document, add_facsimile)
-            
+
     document.save(output_path)
     return output_path
 
@@ -625,36 +622,36 @@ def generate_non_insurance_letter(items: list, output_path: str, contract_no: st
 
     style = document.styles['Normal']
     font = style.font
-    font.name = 'Times New Roman' 
+    font.name = 'Times New Roman'
     font.size = Pt(12)
-    
+
     if not using_template:
         create_header(document)
-    
+
     create_footer(document)
-    
+
     # Spacing from top header (2 lines)
     document.add_paragraph()
     document.add_paragraph()
-    
+
     create_outgoing_info(document)
-    
+
     # Spacing
     document.add_paragraph()
-    
+
     # Title
     p_title = document.add_paragraph('ПИСЬМО О НЕСТРАХОВАНИИ')
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     set_font(p_title.runs[0], bold=True, font_size=14)
-    
+
     # Body
     wb_num = waybill_no if waybill_no else "________________"
     text = f"Настоящим письмом сообщаем, что груз по накладной {wb_num} не страховался на всем пути следования."
-    
+
     p_body = document.add_paragraph(text)
     p_body.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p_body.paragraph_format.first_line_indent = Cm(1.25)
-    
+
     create_signature(document, add_facsimile)
     document.save(output_path)
     return output_path
@@ -676,12 +673,12 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
     else:
         document = Document()
         using_template = False
-        
+
     style = document.styles['Normal']
     font = style.font
-    font.name = 'Times New Roman' 
+    font.name = 'Times New Roman'
     font.size = Pt(12)
-    
+
     if not using_template:
         # Set margins (Left 2.5, Right 1.5 -> 17.0cm text width)
         section = document.sections[0]
@@ -694,27 +691,27 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
 
     if not using_template:
         create_header(document)
-    
+
     create_footer(document)
-    
+
     # If using template, header/footer are already there.
     # We might want to ensure footer is correct, but create_footer is empty anyway.
-    
+
     # Spacing from top header (2 lines)
     document.add_paragraph()
     document.add_paragraph()
-    
+
     create_outgoing_info(document)
-    
+
     # Spacing (Only one empty line as requested)
     document.add_paragraph()
-    
+
     # Title
     p_title = document.add_paragraph('УВЕДОМЛЕНИЕ')
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_title.paragraph_format.space_after = Pt(12)
     set_font(p_title.runs[0], bold=True, font_size=14)
-    
+
     # Subtitle
     subtitle_text = (
         "о подтверждении использования в заявленных нуждах и целях "
@@ -728,7 +725,7 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
     p_subtitle.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p_subtitle.paragraph_format.first_line_indent = Cm(1.25)
     p_subtitle.paragraph_format.space_after = Pt(24)
-    
+
     # Body Intro (Justified as requested "по ширине")
     intro_text = (
         "НАСТОЯЩИМ ООО «БСЛ-Лаб» ИНН 8603248341 УВЕДОМЛЯЕТ о ввозе на "
@@ -739,29 +736,26 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
     p_intro.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p_intro.paragraph_format.first_line_indent = Cm(1.25)
     p_intro.paragraph_format.space_after = Pt(12)
-    
+
     # Table of Items
     table = document.add_table(rows=1, cols=3)
     # table.style = 'Table Grid' # Removed to avoid KeyError with custom template
     table.autofit = False
-    
+
     # Force table alignment to Left
     from docx.enum.table import WD_TABLE_ALIGNMENT
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
-    
+
     # Explicitly set table indentation to 0 to prevent shifting
     from docx.oxml.shared import OxmlElement
-    from docx.oxml.ns import qn
     tblPr = table._tbl.tblPr
     tblInd = OxmlElement('w:tblInd')
     tblInd.set(qn('w:w'), '0')
     tblInd.set(qn('w:type'), 'dxa')
     tblPr.append(tblInd)
-    
+
     # Add borders manually since we can't rely on 'Table Grid'
-    from docx.oxml.shared import OxmlElement
-    from docx.oxml.ns import qn
-    
+
     tbl = table._tbl
     tblPr = tbl.tblPr
     tblBorders = OxmlElement('w:tblBorders')
@@ -773,7 +767,7 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
         border.set(qn('w:color'), 'auto')
         tblBorders.append(border)
     tblPr.append(tblBorders)
-    
+
     # RADICAL FIX: Explicitly set table width to 17.0cm (approx 9638 dxa)
     # This ensures it matches the text width (21cm - 2.5cm - 1.5cm = 17cm)
     tblW = OxmlElement('w:tblW')
@@ -788,30 +782,28 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
     table.columns[0].width = Cm(5.0)
     table.columns[1].width = Cm(9.0)
     table.columns[2].width = Cm(3.0)
-    
+
     # Header Row
     hdr_cells = table.rows[0].cells
     hdr_cells[0].text = 'Обозначение'
     hdr_cells[1].text = 'Наименование'
     hdr_cells[2].text = 'Кол-во'
-    
+
     for cell in hdr_cells:
         cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
         set_font(cell.paragraphs[0].runs[0], bold=True)
         # Add shading/background color
-        from docx.oxml.shared import OxmlElement
-        from docx.oxml.ns import qn
         tcPr = cell._tc.get_or_add_tcPr()
         shd = OxmlElement('w:shd')
         shd.set(qn('w:val'), 'clear')
         shd.set(qn('w:color'), 'auto')
         shd.set(qn('w:fill'), 'D9D9D9') # Light Gray
         tcPr.append(shd)
-    
+
     # Data Rows
     for item in items:
         row_cells = table.add_row().cells
-        
+
         # Designation
         # Handle both dictionary and object access for safety
         if isinstance(item, dict):
@@ -830,7 +822,7 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
         p_des.paragraph_format.space_before = Pt(1)
         p_des.paragraph_format.space_after = Pt(1)
         row_cells[0].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        
+
         # Name
         row_cells[1].text = name or ''
         p_name = row_cells[1].paragraphs[0]
@@ -839,7 +831,7 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
         p_name.paragraph_format.space_before = Pt(1)
         p_name.paragraph_format.space_after = Pt(1)
         row_cells[1].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        
+
         # Quantity
         qty_str = "1"
         if quantity:
@@ -850,9 +842,9 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
         p_qty.paragraph_format.space_before = Pt(1)
         p_qty.paragraph_format.space_after = Pt(1)
         row_cells[2].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    
+
         row_cells[2].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    
+
     document.add_paragraph().paragraph_format.space_after = Pt(12)
 
     # Missing Text Part 1
@@ -878,8 +870,8 @@ def generate_decision_130_notification(items: list, output_path: str, contract_n
     p_2.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     p_2.paragraph_format.first_line_indent = Cm(1.25)
     p_2.paragraph_format.space_after = Pt(24)
-    
+
     create_signature(document, add_facsimile)
-    
+
     document.save(output_path)
     return output_path

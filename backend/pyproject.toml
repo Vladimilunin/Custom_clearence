@@ -38,6 +38,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"app/main.py" = ["E402"]
+"app/services/generator.py" = ["E402", "F811"]
+"tests/*" = ["S101"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from app.api.api_v1.endpoints import parts, invoices, upload
+
+from app.api.api_v1.endpoints import invoices, parts, upload
 
 api_router = APIRouter()
 api_router.include_router(parts.router, prefix="/parts", tags=["parts"])
