@@ -7,10 +7,17 @@ from app.db.session import get_db
 from app.db.models import Part
 from app.services.parser import parse_invoice
 from app.services.generator import generate_technical_description
+from app.schemas import (
+    InvoiceItem,
+    InvoiceUploadResponse,
+    DebugUploadRequest,
+    GenerateRequest,
+)
+from app.exceptions import FileValidationError, PathTraversalError
+from app.utils.validation import validate_pdf_file, validate_file_path, sanitize_filename
 import shutil
 import os
 import tempfile
-from pydantic import BaseModel
 from typing import List, Any, Dict
 import logging
 
@@ -18,47 +25,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-class InvoiceItem(BaseModel):
-    designation: str
-    raw_description: str | None = None
-    # Fields from DB to be populated
-    name: str | None = None
-    material: str | None = None
-    weight: float | None = None
-    weight_unit: str | None = None  # 'кг' или 'г'
-    dimensions: str | None = None
-    description: str | None = None
-    found_in_db: bool = False
-    image_path: str | None = None
-    parsing_method: str | None = None
-    manufacturer: str | None = None
-    condition: str | None = None
-    quantity: int | str | None = 1
-    # Electronics fields
-    component_type: str | None = None  # 'electronics' или 'mechanical'
-    specs: Dict[str, Any] | None = None  # Гибкие характеристики
-    
-    # Deprecated/Legacy fields (kept for backward compatibility)
-    current_type: str | None = None
-    input_voltage: str | None = None
-    input_current: str | None = None
-    processor: str | None = None
-    ram_kb: int | None = None
-    rom_mb: int | None = None
-    tnved_code: str | None = None
-    tnved_description: str | None = None
-
-
-class InvoiceUploadResponse(BaseModel):
-    items: List[InvoiceItem]
-    debug_info: Dict[str, Any] | None = None
-    metadata: Dict[str, Any] | None = None
-
-
-class DebugUploadRequest(BaseModel):
-    file_path: str
-    method: str = "groq"
-    api_key: str | None = None
+# Allowed directories for debug_upload endpoint (security whitelist)
+ALLOWED_DEBUG_DIRECTORIES = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")),  # Project root
+    "/tmp",
+    "C:\\Temp",
+    os.path.expanduser("~"),
+]
 
 async def process_invoice_contents(contents: bytes, filename: str, method: str, api_key: str, db: AsyncSession):
     # Save temp file
@@ -72,7 +45,7 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
     try:
         # Parse invoice
         parsed_items, debug_info = await run_in_threadpool(parse_invoice, pdf_path=temp_path, method=method, api_key=api_key)
-        print(f"Parsed items: {parsed_items}")
+        logger.debug(f"Parsed {len(parsed_items)} items from invoice")
         
         # Match with DB
         results = []
@@ -123,11 +96,11 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
                                  ('электро' in (res_item.material or '').lower()) or \
                                  (res_item.specs is not None)
 
-                print(f"DEBUG: Item {designation}, is_electronics={is_electronics}, DB_Manuf={part.manufacturer}")
+                logger.debug(f"Item {designation}: is_electronics={is_electronics}, DB_Manuf={part.manufacturer}")
 
                 # Force overwrite manufacturer from DB ONLY if electronics
                 if is_electronics and part.manufacturer:
-                    print(f"DEBUG: Overwriting manufacturer for {designation} to {part.manufacturer}")
+                    logger.debug(f"Overwriting manufacturer for {designation} to {part.manufacturer}")
                     res_item.manufacturer = part.manufacturer
                 
                 # Legacy fields
@@ -243,7 +216,7 @@ async def process_invoice_contents(contents: bytes, filename: str, method: str, 
             try:
                 os.unlink(temp_path)
             except Exception as e:
-                print(f"Warning: Could not delete temp file {temp_path}: {e}")
+                logger.warning(f"Could not delete temp file {temp_path}: {e}")
 
 @router.post("/upload", response_model=InvoiceUploadResponse)
 async def upload_invoice(
@@ -253,11 +226,28 @@ async def upload_invoice(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Uploads a PDF invoice, parses it (Gemini or OCR), and matches items with the database.
+    Uploads a PDF invoice, parses it (Groq AI), and matches items with the database.
+    
+    Raises:
+        HTTPException 400: Invalid file format
+        HTTPException 500: Processing error
     """
-    print(f"Received file upload: {file.filename}, method={method}")
+    logger.info(f"Received file upload: {file.filename}, method={method}")
+    
+    # Read file contents
     contents = await file.read()
-    return await process_invoice_contents(contents, file.filename, method, api_key, db)
+    
+    # Validate PDF file
+    try:
+        validate_pdf_file(contents, file.filename)
+    except FileValidationError as e:
+        logger.warning(f"PDF validation failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Sanitize filename
+    safe_filename = sanitize_filename(file.filename)
+    
+    return await process_invoice_contents(contents, safe_filename, method, api_key, db)
 
 @router.post("/debug_upload", response_model=InvoiceUploadResponse)
 async def debug_upload_invoice(
@@ -267,32 +257,44 @@ async def debug_upload_invoice(
     """
     Debug endpoint to load a file directly from the server's filesystem.
     Useful when OS file dialogs are not available or for automation.
+    
+    Security: Path traversal protection is enforced.
+    
+    Raises:
+        HTTPException 400: Path traversal detected or invalid file
+        HTTPException 404: File not found
+        HTTPException 500: Processing error
     """
-    if not os.path.exists(request.file_path):
+    # Validate path to prevent path traversal attacks
+    try:
+        validated_path = validate_file_path(request.file_path, ALLOWED_DEBUG_DIRECTORIES)
+    except PathTraversalError as e:
+        logger.warning(f"Path traversal attempt blocked: {request.file_path}")
+        raise HTTPException(status_code=400, detail="Invalid file path: path traversal not allowed")
+    
+    if not os.path.exists(validated_path):
         raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
     
     try:
-        with open(request.file_path, "rb") as f:
+        with open(validated_path, "rb") as f:
             contents = f.read()
-            
-        filename = os.path.basename(request.file_path)
-        return await process_invoice_contents(contents, filename, request.method, request.api_key, db)
+        
+        # Validate PDF file
+        filename = os.path.basename(validated_path)
+        try:
+            validate_pdf_file(contents, filename)
+        except FileValidationError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        
+        safe_filename = sanitize_filename(filename)
+        return await process_invoice_contents(contents, safe_filename, request.method, request.api_key, db)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error in debug_upload: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-class GenerateRequest(BaseModel):
-    items: List[InvoiceItem]
-    country_of_origin: str | None = "Китай"
-    contract_no: str | None = None
-    contract_date: str | None = None
-    supplier: str | None = "Dongguan City Fangling Precision Mould Co., Ltd."
-    invoice_no: str | None = None
-    invoice_date: str | None = None
-    waybill_no: str | None = None
-    gen_tech_desc: bool = True
-    gen_non_insurance: bool = False
-    gen_decision_130: bool = False
-    add_facsimile: bool = False
+# GenerateRequest is imported from app.schemas
 
 @router.post("/generate")
 async def generate_report(

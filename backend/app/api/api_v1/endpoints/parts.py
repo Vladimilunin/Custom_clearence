@@ -4,23 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.session import get_db
 from app.db.models import Part
-from pydantic import BaseModel
+from app.schemas import PartSchema, PartCreate, PartUpdate
 
 router = APIRouter()
-
-class PartSchema(BaseModel):
-    id: int
-    designation: str
-    name: str | None = None
-    material: str | None = None
-    weight: float | None = None
-    dimensions: str | None = None
-    description: str | None = None
-    section: str | None = None
-    image_path: str | None = None
-
-    class Config:
-        from_attributes = True
 
 @router.get("/", response_model=List[PartSchema])
 async def read_parts(
@@ -45,14 +31,7 @@ async def read_parts(
     parts = result.scalars().all()
     return parts
 
-class PartUpdate(BaseModel):
-    name: str | None = None
-    material: str | None = None
-    weight: float | None = None
-    dimensions: str | None = None
-    description: str | None = None
-    section: str | None = None
-    image_path: str | None = None
+# PartUpdate is imported from app.schemas
 
 @router.put("/{part_id}", response_model=PartSchema)
 async def update_part(
@@ -77,15 +56,7 @@ async def update_part(
     await db.refresh(part)
     return part
 
-class PartCreate(BaseModel):
-    designation: str
-    name: str | None = None
-    material: str | None = None
-    weight: float | None = None
-    dimensions: str | None = None
-    description: str | None = None
-    section: str | None = None
-    image_path: str | None = None
+# PartCreate is imported from app.schemas
 
 @router.post("/", response_model=PartSchema)
 async def create_part(
