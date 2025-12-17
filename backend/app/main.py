@@ -39,9 +39,15 @@ async def lifespan(app: FastAPI):
     # Shutdown
 
 app = FastAPI(
-    title="Tamozh Gen API",
+    title="Генератор технических описаний",
+    description="API для парсинга инвойсов и генерации DOCX-отчетов для таможенного оформления",
+    version="1.0.0",
     lifespan=lifespan
 )
+
+# GZip compression for responses > 500 bytes
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 origins = [
     "http://localhost:3000",
@@ -51,7 +57,7 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex="https://.*\\.vercel\\.app",
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "Content-Disposition"],
