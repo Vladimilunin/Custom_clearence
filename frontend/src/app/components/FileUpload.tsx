@@ -66,11 +66,13 @@ export default function FileUpload({ onUpload, isLoading }: FileUploadProps) {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <div
-        className={`relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${dragActive ? 'border-blue-500 bg-blue-50' :
-            error ? 'border-red-300 bg-red-50' :
-              'border-gray-300 hover:bg-gray-50'
+        className={`relative flex flex-col items-center justify-center w-full h-48 rounded-lg border-2 border-dashed transition-all duration-200 cursor-pointer overflow-hidden ${dragActive
+            ? 'border-primary bg-primary/5'
+            : error
+              ? 'border-destructive/50 bg-destructive/5'
+              : 'border-border bg-card hover:bg-secondary/30 hover:border-primary/50'
           }`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
@@ -93,33 +95,36 @@ export default function FileUpload({ onUpload, isLoading }: FileUploadProps) {
         />
 
         {isLoading ? (
-          <div className="flex flex-col items-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-3"></div>
-            <p className="text-sm text-gray-500">Обработка инвойса...</p>
-            <p className="text-xs text-gray-400 mt-1">Это может занять до минуты</p>
+          <div className="flex flex-col items-center z-10">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p className="text-sm font-medium text-muted-foreground">Анализ документа...</p>
           </div>
         ) : (
-          <div className="flex flex-col items-center text-center p-4">
-            <svg className="w-10 h-10 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <p className="mb-2 text-sm text-gray-500">
-              <span className="font-semibold">Нажмите для загрузки</span> или перетащите файл
+          <div className="flex flex-col items-center text-center p-6 z-10">
+            <div className={`w-10 h-10 mb-3 rounded-full flex items-center justify-center transition-colors duration-200 ${dragActive ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground group-hover:text-foreground'
+              }`}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <p className="mb-1 text-sm font-medium text-foreground">
+              Загрузите инвойс
             </p>
-            <p className="text-xs text-gray-500">PDF инвойсы до 50МБ</p>
+            <p className="text-xs text-muted-foreground">
+              PDF до 50MB
+            </p>
           </div>
         )}
       </div>
 
       {error && (
-        <p className="text-sm text-red-600 flex items-center gap-1">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-center gap-2">
+          <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>
           {error}
-        </p>
+        </div>
       )}
     </div>
   );
 }
-

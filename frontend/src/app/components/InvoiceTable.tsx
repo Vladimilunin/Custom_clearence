@@ -5,7 +5,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import PartDetailModal from './PartDetailModal';
 
 interface InvoiceItem {
-    id?: number; // Added optional ID for keying if needed, though index is used often
+    id?: number;
     designation: string;
     raw_description?: string;
     name: string;
@@ -37,7 +37,7 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
     const rowVirtualizer = useVirtualizer({
         count: items.length,
         getScrollElement: () => parentRef.current,
-        estimateSize: () => 60,
+        estimateSize: () => 56, // Standard row height
         overscan: 5,
     });
 
@@ -106,7 +106,6 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
             price: 0,
             amount: 0
         };
-        // Add to the beginning of the list
         onUpdate([newItem, ...items]);
     };
 
@@ -117,181 +116,196 @@ export default function InvoiceTable({ items, onUpdate, onClear }: InvoiceTableP
         }
     }
 
-    // Adjusted template: Added Quantity column (60px) after Name, Reduced Dimensions column
-    const GRID_TEMPLATE = "50px 150px 250px 60px 100px 80px 100px 150px 100px 80px 100px 100px";
+    const GRID_TEMPLATE = "50px 150px 250px 70px 110px 90px 110px 150px 110px 90px 110px 100px";
 
     return (
-        <div
-            ref={parentRef}
-            className="overflow-auto shadow-md sm:rounded-lg mt-6 h-[calc(100vh-400px)] min-h-[400px] border border-gray-200"
-        >
-            <div className="p-4 bg-white border-b flex justify-between items-center sticky left-0 top-0 z-20">
-                <h2 className="text-lg font-semibold text-gray-700">Список деталей</h2>
-                <div className="flex gap-2">
+        <div className="bg-card rounded-lg border border-border shadow-sm mt-8 overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-card">
+                <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-semibold text-foreground">Список деталей</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground text-xs font-medium">
+                        {items.length}
+                    </span>
+                </div>
+                <div className="flex gap-3">
                     <button
                         onClick={onClear}
-                        className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm font-medium shadow-sm transition-colors"
+                        className="px-3 py-1.5 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
                     >
-                        Очистить список
+                        Очистить
                     </button>
                     <button
                         onClick={handleAddRow}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium shadow-sm transition-colors"
+                        className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors shadow-sm"
                     >
-                        + Добавить строку
+                        + Добавить
                     </button>
                 </div>
             </div>
 
-            <div className="min-w-[1400px]">
-                {/* Header */}
-                <div
-                    className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-700 uppercase grid items-center"
-                    style={{ gridTemplateColumns: GRID_TEMPLATE }}
-                >
-                    <div className="p-3 text-center">№</div>
-                    <div className="p-3">Обозначение</div>
-                    <div className="p-3">Наименование</div>
-                    <div className="p-3">Кол-во</div>
-                    <div className="p-3">Материал</div>
-                    <div className="p-3">Вес (кг)</div>
-                    <div className="p-3">Размеры</div>
-                    <div className="p-3">Производитель</div>
-                    <div className="p-3">Описание</div>
-                    <div className="p-3 text-center">Фото</div>
-                    <div className="p-3 text-center">Статус</div>
-                    <div className="p-3 text-center">Действия</div>
-                </div>
+            <div className="overflow-auto h-[calc(100vh-400px)] min-h-[400px]" ref={parentRef}>
+                <div className="min-w-[1500px]">
+                    {/* Header */}
+                    <div
+                        className="sticky top-0 z-20 bg-card border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider grid items-center shadow-sm"
+                        style={{ gridTemplateColumns: GRID_TEMPLATE }}
+                    >
+                        <div className="p-3 text-center">№</div>
+                        <div className="p-3">Обозначение</div>
+                        <div className="p-3">Наименование</div>
+                        <div className="p-3">Кол-во</div>
+                        <div className="p-3">Материал</div>
+                        <div className="p-3">Вес (кг)</div>
+                        <div className="p-3">Размеры</div>
+                        <div className="p-3">Производитель</div>
+                        <div className="p-3">Описание</div>
+                        <div className="p-3 text-center">Фото</div>
+                        <div className="p-3 text-center">Статус</div>
+                        <div className="p-3 text-center">Действия</div>
+                    </div>
 
-                {/* Body */}
-                <div
-                    style={{
-                        height: `${rowVirtualizer.getTotalSize()}px`,
-                        width: '100%',
-                        position: 'relative',
-                    }}
-                >
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                        const index = virtualRow.index;
-                        const item = items[index];
-                        return (
-                            <div
-                                key={virtualRow.key}
-                                data-index={virtualRow.index}
-                                ref={rowVirtualizer.measureElement}
-                                className={`absolute top-0 left-0 w-full grid items-center border-b border-gray-100 bg-white text-sm ${item.found_in_db ? 'hover:bg-blue-50 cursor-pointer' : 'hover:bg-gray-50'}`}
-                                style={{
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                    gridTemplateColumns: GRID_TEMPLATE,
-                                }}
-                                onClick={(e) => {
-                                    if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'BUTTON') return;
-                                    handleRowClick(item);
-                                }}
-                            >
-                                <div className="p-2 text-center text-gray-500">{index + 1}</div>
-                                <div className="p-2 font-medium text-gray-900">
-                                    <input
-                                        type="text"
-                                        value={item.designation || ''}
-                                        onChange={(e) => handleChange(index, 'designation', e.target.value)}
-                                        className="bg-transparent border-none focus:ring-0 w-full p-0 font-medium text-gray-900"
-                                        placeholder="Обозначение"
-                                    />
-                                </div>
-                                <div className="p-2">
-                                    <input
-                                        type="text"
-                                        value={item.name || ''}
-                                        onChange={(e) => handleChange(index, 'name', e.target.value)}
-                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-                                    />
-                                </div>
-                                <div className="p-2">
-                                    <input
-                                        type="text"
-                                        value={item.quantity || 1}
-                                        onChange={(e) => handleChange(index, 'quantity', e.target.value)}
-                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-                                    />
-                                </div>
-                                <div className="p-2">
-                                    <input
-                                        type="text"
-                                        value={item.material || ''}
-                                        onChange={(e) => handleChange(index, 'material', e.target.value)}
-                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-                                    />
-                                </div>
-                                <div className="p-2">
-                                    <input
-                                        type="number"
-                                        step="0.001"
-                                        value={item.weight || 0}
-                                        onChange={(e) => handleChange(index, 'weight', parseFloat(e.target.value))}
-                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-                                    />
-                                </div>
-                                <div className="p-2">
-                                    <input
-                                        type="text"
-                                        value={item.dimensions || ''}
-                                        onChange={(e) => handleChange(index, 'dimensions', e.target.value)}
-                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-                                    />
-                                </div>
-                                <div className="p-2">
-                                    <input
-                                        type="text"
-                                        value={item.manufacturer || ''}
-                                        onChange={(e) => handleChange(index, 'manufacturer', e.target.value)}
-                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-                                    />
-                                </div>
-                                <div className="p-2">
-                                    <input
-                                        type="text"
-                                        value={item.description || ''}
-                                        onChange={(e) => handleChange(index, 'description', e.target.value)}
-                                        className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-                                    />
-                                </div>
-                                <div className="p-2 text-center">
-                                    {item.image_path ? (
-                                        <img
-                                            src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${item.image_path}`}
-                                            alt="Деталь"
-                                            loading="lazy"
-                                            decoding="async"
-                                            className="h-12 w-12 object-cover rounded mx-auto border border-gray-200 shadow-sm"
-                                            onError={(e) => {
-                                                const target = e.target as HTMLImageElement;
-                                                target.style.display = 'none';
-                                                target.parentElement!.innerHTML = '<span class="text-gray-400 text-xs">Ошибка</span>';
-                                            }}
+                    {/* Body */}
+                    <div
+                        style={{
+                            height: `${rowVirtualizer.getTotalSize()}px`,
+                            width: '100%',
+                            position: 'relative',
+                        }}
+                    >
+                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                            const index = virtualRow.index;
+                            const item = items[index];
+                            return (
+                                <div
+                                    key={virtualRow.key}
+                                    data-index={virtualRow.index}
+                                    ref={rowVirtualizer.measureElement}
+                                    className={`absolute top-0 left-0 w-full grid items-center border-b border-border text-sm transition-colors ${item.found_in_db
+                                        ? 'bg-primary/5 hover:bg-primary/10 cursor-pointer'
+                                        : 'bg-card hover:bg-secondary/30'
+                                        }`}
+                                    style={{
+                                        transform: `translateY(${virtualRow.start}px)`,
+                                        gridTemplateColumns: GRID_TEMPLATE,
+                                    }}
+                                    onClick={(e) => {
+                                        if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'BUTTON') return;
+                                        handleRowClick(item);
+                                    }}
+                                >
+                                    <div className="p-2 text-center text-muted-foreground font-mono text-xs">{index + 1}</div>
+                                    <div className="p-2">
+                                        <input
+                                            type="text"
+                                            value={item.designation || ''}
+                                            onChange={(e) => handleChange(index, 'designation', e.target.value)}
+                                            className="w-full bg-transparent border-none focus:ring-0 p-0 font-medium text-foreground placeholder:text-muted-foreground/50"
+                                            placeholder="Обозначение"
                                         />
-                                    ) : (
-                                        <span className="text-gray-400 text-xs">Нет</span>
-                                    )}
+                                    </div>
+                                    <div className="p-2">
+                                        <input
+                                            type="text"
+                                            value={item.name || ''}
+                                            onChange={(e) => handleChange(index, 'name', e.target.value)}
+                                            className="w-full bg-transparent border border-transparent hover:border-border focus:border-primary/50 focus:bg-background rounded px-2 py-1 transition-all"
+                                        />
+                                    </div>
+                                    <div className="p-2">
+                                        <input
+                                            type="text"
+                                            value={item.quantity || 1}
+                                            onChange={(e) => handleChange(index, 'quantity', e.target.value)}
+                                            className="w-full bg-transparent border border-transparent hover:border-border focus:border-primary/50 focus:bg-background rounded px-2 py-1 transition-all text-center"
+                                        />
+                                    </div>
+                                    <div className="p-2">
+                                        <input
+                                            type="text"
+                                            value={item.material || ''}
+                                            onChange={(e) => handleChange(index, 'material', e.target.value)}
+                                            className="w-full bg-transparent border border-transparent hover:border-border focus:border-primary/50 focus:bg-background rounded px-2 py-1 transition-all"
+                                        />
+                                    </div>
+                                    <div className="p-2">
+                                        <input
+                                            type="number"
+                                            step="0.001"
+                                            value={item.weight || 0}
+                                            onChange={(e) => handleChange(index, 'weight', parseFloat(e.target.value))}
+                                            className="w-full bg-transparent border border-transparent hover:border-border focus:border-primary/50 focus:bg-background rounded px-2 py-1 transition-all"
+                                        />
+                                    </div>
+                                    <div className="p-2">
+                                        <input
+                                            type="text"
+                                            value={item.dimensions || ''}
+                                            onChange={(e) => handleChange(index, 'dimensions', e.target.value)}
+                                            className="w-full bg-transparent border border-transparent hover:border-border focus:border-primary/50 focus:bg-background rounded px-2 py-1 transition-all"
+                                        />
+                                    </div>
+                                    <div className="p-2">
+                                        <input
+                                            type="text"
+                                            value={item.manufacturer || ''}
+                                            onChange={(e) => handleChange(index, 'manufacturer', e.target.value)}
+                                            className="w-full bg-transparent border border-transparent hover:border-border focus:border-primary/50 focus:bg-background rounded px-2 py-1 transition-all"
+                                        />
+                                    </div>
+                                    <div className="p-2">
+                                        <input
+                                            type="text"
+                                            value={item.description || ''}
+                                            onChange={(e) => handleChange(index, 'description', e.target.value)}
+                                            className="w-full bg-transparent border border-transparent hover:border-border focus:border-primary/50 focus:bg-background rounded px-2 py-1 transition-all"
+                                        />
+                                    </div>
+                                    <div className="p-2 text-center">
+                                        {item.image_path ? (
+                                            <div className="relative group/img">
+                                                <img
+                                                    src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${item.image_path}`}
+                                                    alt="Деталь"
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    className="h-8 w-8 object-cover rounded border border-border transition-transform group-hover/img:scale-150 group-hover/img:z-10 relative bg-background"
+                                                    onError={(e) => {
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.style.display = 'none';
+                                                        target.parentElement!.innerHTML = '<span class="text-muted-foreground text-[10px]">Ошибка</span>';
+                                                    }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <span className="text-muted-foreground/30 text-xl">•</span>
+                                        )}
+                                    </div>
+                                    <div className="p-2 text-center">
+                                        {item.found_in_db ? (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">
+                                                Найдено
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700">
+                                                Новое
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="p-2 text-center">
+                                        <button
+                                            onClick={() => handleDelete(index)}
+                                            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                                            title="Удалить"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="p-2 text-center">
-                                    {item.found_in_db ? (
-                                        <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded border border-green-200">Найдено</span>
-                                    ) : (
-                                        <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded border border-yellow-200">Новое</span>
-                                    )}
-                                </div>
-                                <div className="p-2 text-center">
-                                    <button
-                                        onClick={() => handleDelete(index)}
-                                        className="text-white bg-red-600 hover:bg-red-700 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-xs px-3 py-2 focus:outline-none transition-colors shadow-sm"
-                                    >
-                                        Удалить
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
             <PartDetailModal

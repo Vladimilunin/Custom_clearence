@@ -101,28 +101,28 @@ export default function PartDetailModal({
 
     return (
         <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
             onClick={onClose}
         >
             <div
-                className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+                className="bg-background rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-border animate-in zoom-in-95 duration-200"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+                <div className="px-6 py-4 border-b border-border bg-secondary/30 flex justify-between items-center">
                     <div>
-                        <h2 className="text-lg font-semibold text-gray-900">{part.name}</h2>
-                        <p className="text-sm text-gray-500 font-mono">{part.designation}</p>
+                        <h2 className="text-lg font-bold text-foreground tracking-tight">{part.name}</h2>
+                        <p className="text-sm text-muted-foreground font-mono mt-0.5">{part.designation}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                         {isElectronics && (
-                            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                            <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
                                 Электроника
                             </span>
                         )}
                         <button
                             onClick={onClose}
-                            className="p-1 hover:bg-gray-200 rounded transition-colors"
+                            className="p-1.5 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground"
                         >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -132,49 +132,51 @@ export default function PartDetailModal({
                 </div>
 
                 {/* Content */}
-                <div className="p-6 overflow-y-auto max-h-[60vh]">
-                    <div className="grid grid-cols-2 gap-4">
+                <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+                    <div className="grid grid-cols-2 gap-6">
                         {/* Image */}
                         {part.image_path && (
-                            <div className="col-span-2 flex justify-center mb-4">
-                                <img
-                                    src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${part.image_path}`}
-                                    alt={part.name}
-                                    className="max-h-48 rounded-lg shadow-md object-contain"
-                                />
+                            <div className="col-span-2 flex justify-center mb-2">
+                                <div className="relative group">
+                                    <img
+                                        src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/images/${part.image_path}`}
+                                        alt={part.name}
+                                        className="relative max-h-56 rounded-lg shadow-sm object-contain bg-secondary/10 border border-border"
+                                    />
+                                </div>
                             </div>
                         )}
 
                         {/* Basic Info */}
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-xs text-gray-500 uppercase">Материал</label>
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Материал</label>
                                 {isEditing ? (
                                     <input
                                         type="text"
                                         value={editedPart.material || ''}
                                         onChange={e => setEditedPart(prev => ({ ...prev, material: e.target.value }))}
-                                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                                        className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
                                     />
                                 ) : (
-                                    <p className="font-medium">{part.material || '-'}</p>
+                                    <p className="font-medium text-foreground">{part.material || '—'}</p>
                                 )}
                             </div>
-                            <div>
-                                <label className="text-xs text-gray-500 uppercase">Размеры</label>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Размеры</label>
                                 {isEditing ? (
                                     <input
                                         type="text"
                                         value={editedPart.dimensions || ''}
                                         onChange={e => setEditedPart(prev => ({ ...prev, dimensions: e.target.value }))}
-                                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                                        className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
                                     />
                                 ) : (
-                                    <p className="font-medium">{part.dimensions || '-'}</p>
+                                    <p className="font-medium text-foreground">{part.dimensions || '—'}</p>
                                 )}
                             </div>
-                            <div>
-                                <label className="text-xs text-gray-500 uppercase">Вес</label>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Вес</label>
                                 {isEditing ? (
                                     <div className="flex gap-2">
                                         <input
@@ -182,63 +184,63 @@ export default function PartDetailModal({
                                             step="0.001"
                                             value={editedPart.weight || 0}
                                             onChange={e => setEditedPart(prev => ({ ...prev, weight: parseFloat(e.target.value) }))}
-                                            className="w-full px-3 py-2 border rounded-lg text-sm"
+                                            className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
                                         />
                                         <select
                                             value={editedPart.weight_unit || 'кг'}
                                             onChange={e => setEditedPart(prev => ({ ...prev, weight_unit: e.target.value }))}
-                                            className="px-3 py-2 border rounded-lg text-sm"
+                                            className="px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none"
                                         >
                                             <option value="кг">кг</option>
                                             <option value="г">г</option>
                                         </select>
                                     </div>
                                 ) : (
-                                    <p className="font-medium">{part.weight} {part.weight_unit || 'кг'}</p>
+                                    <p className="font-medium text-foreground">{part.weight} {part.weight_unit || 'кг'}</p>
                                 )}
                             </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-xs text-gray-500 uppercase">Производитель</label>
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Производитель</label>
                                 {isEditing ? (
                                     <input
                                         type="text"
                                         value={editedPart.manufacturer || ''}
                                         onChange={e => setEditedPart(prev => ({ ...prev, manufacturer: e.target.value }))}
-                                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                                        className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
                                     />
                                 ) : (
-                                    <p className="font-medium">{part.manufacturer || '-'}</p>
+                                    <p className="font-medium text-foreground">{part.manufacturer || '—'}</p>
                                 )}
                             </div>
-                            <div>
-                                <label className="text-xs text-gray-500 uppercase">Состояние</label>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Состояние</label>
                                 {isEditing ? (
                                     <input
                                         type="text"
                                         value={editedPart.condition || ''}
                                         onChange={e => setEditedPart(prev => ({ ...prev, condition: e.target.value }))}
-                                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                                        className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
                                     />
                                 ) : (
-                                    <p className="font-medium">{part.condition || '-'}</p>
+                                    <p className="font-medium text-foreground">{part.condition || '—'}</p>
                                 )}
                             </div>
                             {(part.tnved_code || isEditing) && (
-                                <div>
-                                    <label className="text-xs text-gray-500 uppercase">ТН ВЭД</label>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">ТН ВЭД</label>
                                     {isEditing ? (
                                         <input
                                             type="text"
                                             value={editedPart.tnved_code || ''}
                                             onChange={e => setEditedPart(prev => ({ ...prev, tnved_code: e.target.value }))}
-                                            className="w-full px-3 py-2 border rounded-lg text-sm"
+                                            className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
                                             placeholder="Код ТН ВЭД"
                                         />
                                     ) : (
-                                        <p className="font-medium">{part.tnved_code}</p>
+                                        <p className="font-medium text-foreground tracking-wide">{part.tnved_code}</p>
                                     )}
                                 </div>
                             )}
@@ -246,38 +248,40 @@ export default function PartDetailModal({
 
                         {/* Description */}
                         {(part.description || isEditing) && (
-                            <div className="col-span-2">
-                                <label className="text-xs text-gray-500 uppercase">Описание</label>
+                            <div className="col-span-2 space-y-1.5">
+                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Описание</label>
                                 {isEditing ? (
                                     <textarea
                                         value={editedPart.description || ''}
                                         onChange={e => setEditedPart(prev => ({ ...prev, description: e.target.value }))}
-                                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                                        className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
                                         rows={3}
                                     />
                                 ) : (
-                                    <p className="text-sm text-gray-700">{part.description}</p>
+                                    <p className="text-sm text-foreground/80 leading-relaxed bg-secondary/30 p-3 rounded-md border border-border">
+                                        {part.description}
+                                    </p>
                                 )}
                             </div>
                         )}
 
                         {/* Specs (Electronics) */}
                         {(isElectronics || Object.keys(editedSpecs).length > 0) && (
-                            <div className="col-span-2 mt-4">
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs text-gray-500 uppercase font-semibold">
+                            <div className="col-span-2 mt-2">
+                                <div className="flex justify-between items-center mb-3">
+                                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                                         Технические характеристики
                                     </label>
                                     {isEditing && (
                                         <button
                                             onClick={addNewSpec}
-                                            className="text-xs text-blue-600 hover:text-blue-800"
+                                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
                                         >
                                             + Добавить параметр
                                         </button>
                                     )}
                                 </div>
-                                <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                                <div className="bg-secondary/20 rounded-lg p-4 space-y-2 border border-border">
                                     {isEditing ? (
                                         Object.entries(editedSpecs).map(([key, value]) => (
                                             <div key={key} className="flex gap-2">
@@ -290,19 +294,19 @@ export default function PartDetailModal({
                                                         newSpecs[e.target.value] = value;
                                                         setEditedSpecs(newSpecs);
                                                     }}
-                                                    className="flex-1 px-2 py-1 border rounded text-sm"
+                                                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none"
                                                     placeholder="Параметр"
                                                 />
                                                 <input
                                                     type="text"
                                                     value={String(value)}
                                                     onChange={e => handleSpecChange(key, e.target.value)}
-                                                    className="flex-1 px-2 py-1 border rounded text-sm"
+                                                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none"
                                                     placeholder="Значение"
                                                 />
                                                 <button
                                                     onClick={() => removeSpec(key)}
-                                                    className="text-red-500 hover:text-red-700 px-2"
+                                                    className="text-destructive hover:text-destructive/80 px-2 transition-colors"
                                                 >
                                                     ✕
                                                 </button>
@@ -310,14 +314,14 @@ export default function PartDetailModal({
                                         ))
                                     ) : (
                                         part.specs && Object.entries(part.specs).map(([key, value]) => (
-                                            <div key={key} className="flex justify-between text-sm">
-                                                <span className="text-gray-600">{key}</span>
-                                                <span className="font-medium">{String(value)}</span>
+                                            <div key={key} className="flex justify-between text-sm py-1 border-b border-border/30 last:border-0">
+                                                <span className="text-muted-foreground">{key}</span>
+                                                <span className="font-medium text-foreground">{String(value)}</span>
                                             </div>
                                         ))
                                     )}
                                     {!isEditing && (!part.specs || Object.keys(part.specs).length === 0) && (
-                                        <p className="text-sm text-gray-400 italic">Нет характеристик</p>
+                                        <p className="text-sm text-muted-foreground italic text-center py-2">Нет характеристик</p>
                                     )}
                                 </div>
                             </div>
@@ -327,12 +331,12 @@ export default function PartDetailModal({
 
                 {/* Footer */}
                 {isEditable && (
-                    <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+                    <div className="px-6 py-4 border-t border-border bg-secondary/30 flex justify-end gap-3">
                         {isEditing ? (
                             <>
                                 <button
                                     onClick={() => setIsEditing(false)}
-                                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                                    className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                                     disabled={isSaving}
                                 >
                                     Отмена
@@ -340,7 +344,7 @@ export default function PartDetailModal({
                                 <button
                                     onClick={handleSave}
                                     disabled={isSaving}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium shadow-sm transition-colors"
                                 >
                                     {isSaving ? 'Сохранение...' : 'Сохранить'}
                                 </button>
@@ -348,7 +352,7 @@ export default function PartDetailModal({
                         ) : (
                             <button
                                 onClick={() => setIsEditing(true)}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                                className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 text-sm font-medium transition-colors border border-border"
                             >
                                 Редактировать
                             </button>

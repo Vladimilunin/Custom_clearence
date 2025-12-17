@@ -23,8 +23,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#3B82F6",
+  themeColor: "#ffffff",
 };
+
+import Sidebar from "./components/Sidebar";
 
 export default function RootLayout({
   children,
@@ -34,10 +36,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen flex`}
         suppressHydrationWarning
       >
-        {children}
+        <Sidebar />
+        <main className="flex-1 ml-64 p-8 relative overflow-x-hidden bg-background">
+          {children}
+        </main>
       </body>
     </html>
   );

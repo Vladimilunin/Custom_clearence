@@ -277,9 +277,12 @@ export default function Home() {
 
 
           {debugInfo && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-md border text-sm">
-              <h3 className="font-semibold mb-2">Детали Парсинга (Debug Info):</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <details className="mt-4 bg-gray-50 rounded-md border text-sm group">
+              <summary className="p-4 font-semibold cursor-pointer list-none flex items-center gap-2 select-none text-gray-700 hover:text-gray-900 transition-colors">
+                <svg className="w-4 h-4 transition-transform group-open:rotate-90 text-gray-400 group-hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                Детали Парсинга (Debug Info)
+              </summary>
+              <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-2 pl-10 border-t border-gray-100 pt-4">
                 <div>
                   <span className="font-medium">Использованный метод:</span> {debugInfo.method_used}
                 </div>
@@ -302,7 +305,7 @@ export default function Home() {
                 {debugInfo.key_attempts && (
                   <div className="col-span-2 mt-2">
                     <p className="font-medium">Журнал ключей (Key Rotation):</p>
-                    <div className="max-h-40 overflow-y-auto text-xs bg-gray-100 p-2 rounded border">
+                    <div className="max-h-40 overflow-y-auto text-xs bg-white p-2 rounded border shadow-inner">
                       {debugInfo.key_attempts.map((attempt: KeyAttempt, idx: number) => (
                         <div key={idx} className={`mb-1 ${attempt.status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
                           <strong>Page {attempt.page}</strong>: Key #{attempt.key_idx + 1} ({attempt.model})
@@ -321,7 +324,7 @@ export default function Home() {
                   </div>
                 )}
               </div>
-            </div>
+            </details>
           )}
         </div>
 
