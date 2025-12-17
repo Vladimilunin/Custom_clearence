@@ -22,9 +22,26 @@ build/
 .DS_Store
 Thumbs.db
 
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+app.log
+
 # Large Assets / Backups
 _изображения/
 backups/
 parts_db.xls/
 *.pdf
 *.zip
+
+# Test artifacts
+test_report.docx
+*.pyc
+.coverage
+htmlcov/
+
